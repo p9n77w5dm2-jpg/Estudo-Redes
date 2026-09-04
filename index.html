@@ -62,6 +62,25 @@ aside { background:var(--rail); border-right:1px solid var(--line);
   letter-spacing:-.01em; text-wrap:balance; }
 .marca p { margin:0; font-family:var(--mono); font-size:11px; letter-spacing:.06em;
   text-transform:uppercase; color:var(--muted); }
+.prog { display:flex; align-items:center; gap:8px; margin-top:11px; }
+.prog-barra { flex:1; height:3px; background:var(--line); border-radius:3px; overflow:hidden; }
+.prog-barra i { display:block; height:100%; width:0; background:var(--accent); transition:width .3s ease; }
+.prog-n { font-family:var(--mono); font-size:10.5px; color:var(--accent);
+  font-variant-numeric:tabular-nums; }
+.continuar { padding:0 16px 14px; border-bottom:1px solid var(--line); }
+.continuar button { width:100%; text-align:left; background:var(--accent-soft);
+  border:1px solid var(--accent); border-radius:6px; padding:9px 12px; cursor:pointer;
+  color:var(--ink); font:400 12.5px/1.35 var(--sans); }
+.continuar span { display:block; font-family:var(--mono); font-size:9.5px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--accent); margin-bottom:3px; }
+.retomado { position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:30;
+  display:flex; align-items:center; gap:6px; background:var(--surface); color:var(--ink);
+  border:1px solid var(--line-2); border-radius:999px; padding:8px 10px 8px 16px;
+  box-shadow:0 8px 28px rgba(0,0,0,.18); font-size:13px; max-width:calc(100% - 28px); }
+.retomado p { margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.retomado button { background:none; border:0; color:var(--accent); cursor:pointer;
+  font:600 12.5px var(--sans); padding:6px 11px; border-radius:999px; white-space:nowrap; }
+.retomado button:hover { background:var(--accent-soft); }
 .busca { padding:14px 16px; border-bottom:1px solid var(--line); display:flex; }
 .busca input { flex:1; min-width:0; font:400 13px/1.4 var(--sans); color:var(--ink);
   background:var(--surface); border:1px solid var(--line-2); border-radius:5px; padding:7px 10px; }
@@ -85,11 +104,14 @@ nav { padding:6px 0 26px; flex:1; }
   font-variant-numeric:tabular-nums; white-space:nowrap; }
 .itm-c { min-width:0; display:flex; flex-direction:column; gap:3px; }
 .itm-t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* a barra mostra o PROGRESSO DE LEITURA do modulo; o tamanho ja esta no rotulo "12k" */
 .dens { height:2px; background:var(--line); border-radius:2px; overflow:hidden; }
-.dens i { display:block; height:100%; background:var(--line-2); }
-.itm[aria-current="true"] .dens i { background:var(--accent); }
+.dens i { display:block; height:100%; width:0; background:var(--accent);
+  transition:width .3s ease; }
 .itm-w { font-family:var(--mono); font-size:10px; color:var(--muted); text-align:right;
   font-variant-numeric:tabular-nums; }
+.itm[data-lido="1"] .itm-w { color:var(--accent); }
+.itm[data-lido="1"] .itm-w::before { content:"✓ "; }
 .rodape { padding:14px 16px; border-top:1px solid var(--line); font-family:var(--mono);
   font-size:10.5px; color:var(--muted); display:flex; justify-content:space-between; gap:8px; }
 .rodape button { background:none; border:0; color:var(--muted); cursor:pointer;
@@ -198,43 +220,48 @@ main { background:var(--bg); min-width:0; }
     <div class="marca">
       <h1>Redes para SOC Level 1</h1>
       <p>21 m&oacute;dulos &middot; 182k palavras</p>
+      <div class="prog">
+        <div class="prog-barra"><i id="prog-i"></i></div>
+        <span class="prog-n" id="prog-n">0%</span>
+      </div>
     </div>
+    <div class="continuar" id="continuar" hidden></div>
     <div class="busca">
       <input id="q" type="search" placeholder="Buscar no curso inteiro&hellip;" aria-label="Buscar no curso">
     </div>
     <nav id="nav"><div class="grupo"><p class="grupo-n">Parte I</p><p class="grupo-t">Fundamentos</p><p class="grupo-s">Como uma rede funciona por dentro</p><ul class="lista">
-<li><button class="itm" data-mod="01-fundamentos-de-redes"><span class="itm-n">1</span><span class="itm-c"><span class="itm-t">Fundamentos de Redes</span><span class="dens"><i style="width:64%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="02a-modelo-osi-camadas-1-3"><span class="itm-n">2·1</span><span class="itm-c"><span class="itm-t">Modelo OSI — camadas 1 a 3</span><span class="dens"><i style="width:64%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="02b-modelo-osi-camadas-4-7"><span class="itm-n">2·2</span><span class="itm-c"><span class="itm-t">Modelo OSI — camadas 4 a 7</span><span class="dens"><i style="width:61%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="03-tcp-ip"><span class="itm-n">3</span><span class="itm-c"><span class="itm-t">TCP/IP e packet flow</span><span class="dens"><i style="width:55%"></i></span></span><span class="itm-w">6k</span></button></li>
-<li><button class="itm" data-mod="04-enderecamento-ip"><span class="itm-n">4</span><span class="itm-c"><span class="itm-t">Endereçamento IP e subnetting</span><span class="dens"><i style="width:62%"></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="01-fundamentos-de-redes" data-lido="0"><span class="itm-n">1</span><span class="itm-c"><span class="itm-t">Fundamentos de Redes</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="02a-modelo-osi-camadas-1-3" data-lido="0"><span class="itm-n">2·1</span><span class="itm-c"><span class="itm-t">Modelo OSI — camadas 1 a 3</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="02b-modelo-osi-camadas-4-7" data-lido="0"><span class="itm-n">2·2</span><span class="itm-c"><span class="itm-t">Modelo OSI — camadas 4 a 7</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="03-tcp-ip" data-lido="0"><span class="itm-n">3</span><span class="itm-c"><span class="itm-t">TCP/IP e packet flow</span><span class="dens"><i></i></span></span><span class="itm-w">6k</span></button></li>
+<li><button class="itm" data-mod="04-enderecamento-ip" data-lido="0"><span class="itm-n">4</span><span class="itm-c"><span class="itm-t">Endereçamento IP e subnetting</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
 </ul></div>
 <div class="grupo"><p class="grupo-n">Parte II</p><p class="grupo-t">Servicos e infraestrutura</p><p class="grupo-s">O que roda em cima da rede</p><ul class="lista">
-<li><button class="itm" data-mod="05-dns"><span class="itm-n">5</span><span class="itm-c"><span class="itm-t">DNS</span><span class="dens"><i style="width:81%"></i></span></span><span class="itm-w">9k</span></button></li>
-<li><button class="itm" data-mod="06a-portas-e-protocolos-parte-1"><span class="itm-n">6·1</span><span class="itm-c"><span class="itm-t">Portas e protocolos — 20 a 161</span><span class="dens"><i style="width:51%"></i></span></span><span class="itm-w">6k</span></button></li>
-<li><button class="itm" data-mod="06b-portas-e-protocolos-parte-2"><span class="itm-n">6·2</span><span class="itm-c"><span class="itm-t">Portas e protocolos — 389 a 8080</span><span class="dens"><i style="width:68%"></i></span></span><span class="itm-w">8k</span></button></li>
+<li><button class="itm" data-mod="05-dns" data-lido="0"><span class="itm-n">5</span><span class="itm-c"><span class="itm-t">DNS</span><span class="dens"><i></i></span></span><span class="itm-w">9k</span></button></li>
+<li><button class="itm" data-mod="06a-portas-e-protocolos-parte-1" data-lido="0"><span class="itm-n">6·1</span><span class="itm-c"><span class="itm-t">Portas e protocolos — 20 a 161</span><span class="dens"><i></i></span></span><span class="itm-w">6k</span></button></li>
+<li><button class="itm" data-mod="06b-portas-e-protocolos-parte-2" data-lido="0"><span class="itm-n">6·2</span><span class="itm-c"><span class="itm-t">Portas e protocolos — 389 a 8080</span><span class="dens"><i></i></span></span><span class="itm-w">8k</span></button></li>
 </ul></div>
 <div class="grupo"><p class="grupo-n">Parte III</p><p class="grupo-t">Defesa e identidade</p><p class="grupo-s">Perimetro, acesso e Active Directory</p><ul class="lista">
-<li><button class="itm" data-mod="07-firewalls"><span class="itm-n">7</span><span class="itm-c"><span class="itm-t">Firewalls</span><span class="dens"><i style="width:62%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="08-proxies"><span class="itm-n">8</span><span class="itm-c"><span class="itm-t">Proxies e segurança web</span><span class="dens"><i style="width:59%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="09-vpn"><span class="itm-n">9</span><span class="itm-c"><span class="itm-t">VPN</span><span class="dens"><i style="width:70%"></i></span></span><span class="itm-w">8k</span></button></li>
-<li><button class="itm" data-mod="10-active-directory"><span class="itm-n">10</span><span class="itm-c"><span class="itm-t">Active Directory</span><span class="dens"><i style="width:94%"></i></span></span><span class="itm-w">11k</span></button></li>
+<li><button class="itm" data-mod="07-firewalls" data-lido="0"><span class="itm-n">7</span><span class="itm-c"><span class="itm-t">Firewalls</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="08-proxies" data-lido="0"><span class="itm-n">8</span><span class="itm-c"><span class="itm-t">Proxies e segurança web</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="09-vpn" data-lido="0"><span class="itm-n">9</span><span class="itm-c"><span class="itm-t">VPN</span><span class="dens"><i></i></span></span><span class="itm-w">8k</span></button></li>
+<li><button class="itm" data-mod="10-active-directory" data-lido="0"><span class="itm-n">10</span><span class="itm-c"><span class="itm-t">Active Directory</span><span class="dens"><i></i></span></span><span class="itm-w">11k</span></button></li>
 </ul></div>
 <div class="grupo"><p class="grupo-n">Parte IV</p><p class="grupo-t">Operacao de SOC</p><p class="grupo-s">Logs, pacotes, ferramentas e ameacas</p><ul class="lista">
-<li><button class="itm" data-mod="11-logs-e-investigacao"><span class="itm-n">11</span><span class="itm-c"><span class="itm-t">Logs e investigação</span><span class="dens"><i style="width:79%"></i></span></span><span class="itm-w">9k</span></button></li>
-<li><button class="itm" data-mod="12-wireshark"><span class="itm-n">12</span><span class="itm-c"><span class="itm-t">Wireshark</span><span class="dens"><i style="width:60%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="13-network-security"><span class="itm-n">13</span><span class="itm-c"><span class="itm-t">IDS, IPS, NDR, SIEM e EDR</span><span class="dens"><i style="width:65%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="14-ameacas-comuns"><span class="itm-n">14</span><span class="itm-c"><span class="itm-t">Ameaças comuns</span><span class="dens"><i style="width:100%"></i></span></span><span class="itm-w">12k</span></button></li>
+<li><button class="itm" data-mod="11-logs-e-investigacao" data-lido="0"><span class="itm-n">11</span><span class="itm-c"><span class="itm-t">Logs e investigação</span><span class="dens"><i></i></span></span><span class="itm-w">9k</span></button></li>
+<li><button class="itm" data-mod="12-wireshark" data-lido="0"><span class="itm-n">12</span><span class="itm-c"><span class="itm-t">Wireshark</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="13-network-security" data-lido="0"><span class="itm-n">13</span><span class="itm-c"><span class="itm-t">IDS, IPS, NDR, SIEM e EDR</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="14-ameacas-comuns" data-lido="0"><span class="itm-n">14</span><span class="itm-c"><span class="itm-t">Ameaças comuns</span><span class="dens"><i></i></span></span><span class="itm-w">12k</span></button></li>
 </ul></div>
 <div class="grupo"><p class="grupo-n">Parte V</p><p class="grupo-t">Pratica e carreira</p><p class="grupo-s">Laboratorios, entrevista e plano de estudo</p><ul class="lista">
-<li><button class="itm" data-mod="15-roadmap-conhecimentos-soc-n1"><span class="itm-n">15</span><span class="itm-c"><span class="itm-t">Mapa de conhecimentos</span><span class="dens"><i style="width:73%"></i></span></span><span class="itm-w">8k</span></button></li>
-<li><button class="itm" data-mod="16a-laboratorios-wireshark-linux"><span class="itm-n">16·1</span><span class="itm-c"><span class="itm-t">Labs — Wireshark e Linux</span><span class="dens"><i style="width:58%"></i></span></span><span class="itm-w">7k</span></button></li>
-<li><button class="itm" data-mod="16b-laboratorios-windows-active-directory"><span class="itm-n">16·2</span><span class="itm-c"><span class="itm-t">Labs — Windows e AD</span><span class="dens"><i style="width:86%"></i></span></span><span class="itm-w">10k</span></button></li>
-<li><button class="itm" data-mod="17-checklist-entrevista-soc"><span class="itm-n">17</span><span class="itm-c"><span class="itm-t">Checklist de entrevista</span><span class="dens"><i style="width:88%"></i></span></span><span class="itm-w">10k</span></button></li>
-<li><button class="itm" data-mod="18-roadmap-90-dias"><span class="itm-n">18</span><span class="itm-c"><span class="itm-t">Roadmap de 90 dias</span><span class="dens"><i style="width:100%"></i></span></span><span class="itm-w">12k</span></button></li>
+<li><button class="itm" data-mod="15-roadmap-conhecimentos-soc-n1" data-lido="0"><span class="itm-n">15</span><span class="itm-c"><span class="itm-t">Mapa de conhecimentos</span><span class="dens"><i></i></span></span><span class="itm-w">8k</span></button></li>
+<li><button class="itm" data-mod="16a-laboratorios-wireshark-linux" data-lido="0"><span class="itm-n">16·1</span><span class="itm-c"><span class="itm-t">Labs — Wireshark e Linux</span><span class="dens"><i></i></span></span><span class="itm-w">7k</span></button></li>
+<li><button class="itm" data-mod="16b-laboratorios-windows-active-directory" data-lido="0"><span class="itm-n">16·2</span><span class="itm-c"><span class="itm-t">Labs — Windows e AD</span><span class="dens"><i></i></span></span><span class="itm-w">10k</span></button></li>
+<li><button class="itm" data-mod="17-checklist-entrevista-soc" data-lido="0"><span class="itm-n">17</span><span class="itm-c"><span class="itm-t">Checklist de entrevista</span><span class="dens"><i></i></span></span><span class="itm-w">10k</span></button></li>
+<li><button class="itm" data-mod="18-roadmap-90-dias" data-lido="0"><span class="itm-n">18</span><span class="itm-c"><span class="itm-t">Roadmap de 90 dias</span><span class="dens"><i></i></span></span><span class="itm-w">12k</span></button></li>
 </ul></div></nav>
     <div class="rodape">
-      <span>Manual de plant&atilde;o</span>
+      <button id="zerar" type="button">Zerar progresso</button>
       <button id="tema" type="button">Alternar tema</button>
     </div>
   </aside>
@@ -16679,7 +16706,7 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
 <script>
 (function () {
-  var IDX = [{"s": "01-fundamentos-de-redes", "t": "Fundamentos de Redes", "n": "1"}, {"s": "02a-modelo-osi-camadas-1-3", "t": "Modelo OSI — camadas 1 a 3", "n": "2·1"}, {"s": "02b-modelo-osi-camadas-4-7", "t": "Modelo OSI — camadas 4 a 7", "n": "2·2"}, {"s": "03-tcp-ip", "t": "TCP/IP e packet flow", "n": "3"}, {"s": "04-enderecamento-ip", "t": "Endereçamento IP e subnetting", "n": "4"}, {"s": "05-dns", "t": "DNS", "n": "5"}, {"s": "06a-portas-e-protocolos-parte-1", "t": "Portas e protocolos — 20 a 161", "n": "6·1"}, {"s": "06b-portas-e-protocolos-parte-2", "t": "Portas e protocolos — 389 a 8080", "n": "6·2"}, {"s": "07-firewalls", "t": "Firewalls", "n": "7"}, {"s": "08-proxies", "t": "Proxies e segurança web", "n": "8"}, {"s": "09-vpn", "t": "VPN", "n": "9"}, {"s": "10-active-directory", "t": "Active Directory", "n": "10"}, {"s": "11-logs-e-investigacao", "t": "Logs e investigação", "n": "11"}, {"s": "12-wireshark", "t": "Wireshark", "n": "12"}, {"s": "13-network-security", "t": "IDS, IPS, NDR, SIEM e EDR", "n": "13"}, {"s": "14-ameacas-comuns", "t": "Ameaças comuns", "n": "14"}, {"s": "15-roadmap-conhecimentos-soc-n1", "t": "Mapa de conhecimentos", "n": "15"}, {"s": "16a-laboratorios-wireshark-linux", "t": "Labs — Wireshark e Linux", "n": "16·1"}, {"s": "16b-laboratorios-windows-active-directory", "t": "Labs — Windows e AD", "n": "16·2"}, {"s": "17-checklist-entrevista-soc", "t": "Checklist de entrevista", "n": "17"}, {"s": "18-roadmap-90-dias", "t": "Roadmap de 90 dias", "n": "18"}];
+  var IDX = [{"s": "01-fundamentos-de-redes", "t": "Fundamentos de Redes", "n": "1", "p": 7769}, {"s": "02a-modelo-osi-camadas-1-3", "t": "Modelo OSI — camadas 1 a 3", "n": "2·1", "p": 7806}, {"s": "02b-modelo-osi-camadas-4-7", "t": "Modelo OSI — camadas 4 a 7", "n": "2·2", "p": 7466}, {"s": "03-tcp-ip", "t": "TCP/IP e packet flow", "n": "3", "p": 6758}, {"s": "04-enderecamento-ip", "t": "Endereçamento IP e subnetting", "n": "4", "p": 7498}, {"s": "05-dns", "t": "DNS", "n": "5", "p": 9905}, {"s": "06a-portas-e-protocolos-parte-1", "t": "Portas e protocolos — 20 a 161", "n": "6·1", "p": 6221}, {"s": "06b-portas-e-protocolos-parte-2", "t": "Portas e protocolos — 389 a 8080", "n": "6·2", "p": 8292}, {"s": "07-firewalls", "t": "Firewalls", "n": "7", "p": 7582}, {"s": "08-proxies", "t": "Proxies e segurança web", "n": "8", "p": 7244}, {"s": "09-vpn", "t": "VPN", "n": "9", "p": 8538}, {"s": "10-active-directory", "t": "Active Directory", "n": "10", "p": 11441}, {"s": "11-logs-e-investigacao", "t": "Logs e investigação", "n": "11", "p": 9586}, {"s": "12-wireshark", "t": "Wireshark", "n": "12", "p": 7366}, {"s": "13-network-security", "t": "IDS, IPS, NDR, SIEM e EDR", "n": "13", "p": 7929}, {"s": "14-ameacas-comuns", "t": "Ameaças comuns", "n": "14", "p": 12183}, {"s": "15-roadmap-conhecimentos-soc-n1", "t": "Mapa de conhecimentos", "n": "15", "p": 8862}, {"s": "16a-laboratorios-wireshark-linux", "t": "Labs — Wireshark e Linux", "n": "16·1", "p": 7091}, {"s": "16b-laboratorios-windows-active-directory", "t": "Labs — Windows e AD", "n": "16·2", "p": 10493}, {"s": "17-checklist-entrevista-soc", "t": "Checklist de entrevista", "n": "17", "p": 10665}, {"s": "18-roadmap-90-dias", "t": "Roadmap de 90 dias", "n": "18", "p": 12136}];
   var docs = {}, atual = null;
   document.querySelectorAll("script.md").forEach(function (s) { docs[s.dataset.mod] = s.textContent; });
 
@@ -16756,7 +16783,127 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
     pag.appendChild(bt(i < IDX.length - 1 ? i + 1 : -1, "Pr\u00f3ximo"));
   }
 
-  function abrir(slug) {
+  // ---- marcador de leitura: guarda onde voce parou, modulo a modulo ----
+  var CHAVE = "soc-progresso";
+  var prog = { ultimo: null, mods: {} };
+  var buscando = false;
+  try { prog = JSON.parse(localStorage.getItem(CHAVE)) || prog; } catch (e) {}
+  if (!prog.mods) prog.mods = {};
+
+  function gravarProg() {
+    try { localStorage.setItem(CHAVE, JSON.stringify(prog)); } catch (e) {}
+  }
+
+  function rolavel() {
+    return Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+  }
+
+  function fracao() {
+    return Math.min(1, Math.max(0, window.scrollY / rolavel()));
+  }
+
+  function registar() {
+    if (!atual || buscando) return;
+    var f = fracao();
+    var m = prog.mods[atual] || { max: 0 };
+    m.frac = f;
+    m.y = Math.round(window.scrollY);
+    m.altura = Math.round(document.documentElement.scrollHeight);
+    if (f > (m.max || 0)) m.max = f;   // "max" = ponto mais longe ja alcancado
+    prog.mods[atual] = m;
+    prog.ultimo = { mod: atual, frac: f };
+    gravarProg();
+    pintar();
+  }
+
+  function pintar() {
+    var lidas = 0, total = 0;
+    IDX.forEach(function (m) {
+      var p = prog.mods[m.s] || {};
+      var lido = Math.min(1, p.max || 0);
+      var peso = m.p || 1;                 // pondera pelo tamanho do modulo
+      lidas += lido * peso;
+      total += peso;
+      var b = document.querySelector('.itm[data-mod="' + m.s + '"]');
+      if (!b) return;
+      b.querySelector(".dens i").style.width = (lido * 100).toFixed(1) + "%";
+      b.setAttribute("data-lido", lido >= 0.95 ? "1" : "0");
+    });
+    var pct = total ? Math.round(100 * lidas / total) : 0;
+    document.getElementById("prog-i").style.width = pct + "%";
+    document.getElementById("prog-n").textContent = pct + "%";
+    atualizarContinuar();
+  }
+
+  function atualizarContinuar() {
+    var c = document.getElementById("continuar");
+    var u = prog.ultimo;
+    if (!u || !docs[u.mod] || (u.mod === atual && Math.abs(fracao() - (u.frac || 0)) < 0.03)) {
+      c.hidden = true;
+      return;
+    }
+    var m = null;
+    IDX.forEach(function (x) { if (x.s === u.mod) m = x; });
+    if (!m) { c.hidden = true; return; }
+    c.innerHTML = "";
+    var b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = "<span>Continuar onde parou</span>" + m.t +
+      " · " + Math.round((u.frac || 0) * 100) + "%";
+    b.addEventListener("click", function () { abrir(u.mod); });
+    c.appendChild(b);
+    c.hidden = false;
+  }
+
+  function avisoRetomado() {
+    var v = document.getElementById("retomado");
+    if (v) v.remove();
+    v = document.createElement("div");
+    v.className = "retomado";
+    v.id = "retomado";
+    var p = document.createElement("p");
+    p.textContent = "Retomado onde você parou";
+    var b1 = document.createElement("button");
+    b1.type = "button";
+    b1.textContent = "Ir ao início";
+    b1.addEventListener("click", function () { window.scrollTo(0, 0); v.remove(); });
+    var b2 = document.createElement("button");
+    b2.type = "button";
+    b2.textContent = "OK";
+    b2.setAttribute("aria-label", "Fechar aviso");
+    b2.addEventListener("click", function () { v.remove(); });
+    v.appendChild(p);
+    v.appendChild(b1);
+    v.appendChild(b2);
+    document.body.appendChild(v);
+    setTimeout(function () { if (v.parentNode) v.remove(); }, 7000);
+  }
+
+  function restaurar(slug) {
+    var m = prog.mods[slug];
+    if (!m) return;
+    var h = document.documentElement.scrollHeight;
+    // usa os pixels guardados se a altura do modulo nao mudou; senao cai na fracao,
+    // que sobrevive a uma reescrita do conteudo
+    var y = (m.altura && Math.abs(h - m.altura) / m.altura < 0.05 && m.y)
+      ? m.y
+      : (m.frac || 0) * rolavel();
+    y = Math.min(y, rolavel());
+    if (y > 40) { window.scrollTo(0, y); avisoRetomado(); }
+  }
+
+  var agendado = null;
+  window.addEventListener("scroll", function () {
+    if (agendado) return;
+    agendado = setTimeout(function () { agendado = null; registar(); }, 350);
+  }, { passive: true });
+  window.addEventListener("beforeunload", registar);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") registar();
+  });
+
+  function abrir(slug, semRestaurar) {
+    registar();
     var i = -1;
     for (var k = 0; k < IDX.length; k++) { if (IDX[k].s === slug) { i = k; break; } }
     if (i < 0) return;
@@ -16773,6 +16920,12 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
     lateral.classList.remove("aberta");
     window.scrollTo(0, 0);
     try { localStorage.setItem("soc-mod", slug); } catch (e) {}
+    buscando = false;
+    pintar();
+    // espera o layout assentar antes de saltar para a posicao guardada
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { if (!semRestaurar) restaurar(slug); });
+    });
   }
 
   document.querySelectorAll(".itm").forEach(function (b) {
@@ -16783,6 +16936,8 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
   q.addEventListener("input", function () {
     var termo = q.value.trim().toLowerCase();
     if (termo.length < 3) { if (atual) abrir(atual); return; }
+    registar();       // guarda a posicao antes de trocar a tela por resultados
+    buscando = true;  // enquanto a busca esta aberta, nao registamos rolagem
     var achados = [];
     IDX.forEach(function (m) {
       var texto = docs[m.s].toLowerCase(), n = 0, p = texto.indexOf(termo);
@@ -16832,8 +16987,16 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
     r.setAttribute("data-theme", escuro ? "light" : "dark");
   });
 
+  document.getElementById("zerar").addEventListener("click", function () {
+    if (!confirm("Apagar o progresso de leitura de todos os módulos?")) return;
+    prog = { ultimo: null, mods: {} };
+    gravarProg();
+    pintar();
+  });
+
   var inicial = null;
   try { inicial = localStorage.getItem("soc-mod"); } catch (e) {}
+  if (prog.ultimo && docs[prog.ultimo.mod]) inicial = prog.ultimo.mod;
   abrir(docs[inicial] ? inicial : IDX[0].s);
 })();
 </script>
