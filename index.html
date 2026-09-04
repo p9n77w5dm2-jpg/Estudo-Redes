@@ -96,7 +96,7 @@ nav { padding:6px 0 26px; flex:1; }
   font:inherit; padding:0; text-decoration:underline; text-underline-offset:2px; }
 .rodape button:hover { color:var(--accent); }
 
-main { background:var(--bg); }
+main { background:var(--bg); min-width:0; }
 .topo { display:none; }
 .corpo { max-width:var(--w); margin:0 auto; padding:44px 32px 96px; }
 .crumb { font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
@@ -109,6 +109,7 @@ main { background:var(--bg); }
 .sumario a { color:var(--ink-2); text-decoration:none; }
 .sumario a:hover { color:var(--accent); text-decoration:underline; }
 
+.doc { min-width:0; overflow-wrap:break-word; }
 .doc h1 { font-family:var(--serif); font-size:34px; line-height:1.18; letter-spacing:-.015em;
   margin:0 0 6px; text-wrap:balance; }
 .doc h2 { font-family:var(--serif); font-size:24px; line-height:1.25; margin:52px 0 12px;
@@ -165,7 +166,9 @@ main { background:var(--bg); }
 .vazio { color:var(--muted); font-size:14px; }
 
 @media (max-width: 900px) {
-  .shell { grid-template-columns:1fr; }
+  /* minmax(0,...) e obrigatorio: com 1fr a coluna herda min-width:auto e uma
+     tabela larga estica a pagina inteira, cortando o texto no celular */
+  .shell { grid-template-columns:minmax(0,1fr); }
   aside { position:fixed; inset:0 auto 0 0; width:290px; z-index:20;
     transform:translateX(-100%); transition:transform .22s ease; }
   aside.aberta { transform:none; box-shadow:0 0 0 100vmax rgba(0,0,0,.42); }
