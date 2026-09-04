@@ -16879,6 +16879,10 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
     setTimeout(function () { if (v.parentNode) v.remove(); }, 7000);
   }
 
+  // o proprio navegador restaura a rolagem ao recarregar a mesma URL e sobrepoe-se
+  // a nossa; desligamos para ficarmos com o controlo do marcador
+  if ("scrollRestoration" in history) { history.scrollRestoration = "manual"; }
+
   function restaurar(slug) {
     var m = prog.mods[slug];
     if (!m) return;
@@ -16889,7 +16893,19 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
       ? m.y
       : (m.frac || 0) * rolavel();
     y = Math.min(y, rolavel());
-    if (y > 40) { window.scrollTo(0, y); avisoRetomado(); }
+    if (y <= 40) return;
+    window.scrollTo({ top: y, behavior: "auto" });
+    // confirma que assentou: fontes e imagens podem mudar a altura depois do salto
+    var tentativas = 0;
+    var conferir = setInterval(function () {
+      tentativas++;
+      if (Math.abs(window.scrollY - y) > 120 && tentativas < 8) {
+        window.scrollTo({ top: Math.min(y, rolavel()), behavior: "auto" });
+      } else {
+        clearInterval(conferir);
+      }
+    }, 120);
+    avisoRetomado();
   }
 
   var agendado = null;
