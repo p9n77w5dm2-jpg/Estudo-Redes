@@ -85,7 +85,29 @@ Palo Alto, log TRAFFIC em CSV (campos selecionados):
 1842,24,1310,1114,tcp-fin,jsilva
 ```
 
-Leitura dos campos: data/hora, número de série do firewall, tipo `TRAFFIC`, subtipo `end` (conexão terminada), IP de origem, IP de destino, porta de origem efêmera 51422, porta de destino 443, aplicação identificada `ssl`, protocolo `tcp`, ação `allow`, zonas, interfaces, bytes enviados/recebidos, pacotes, e o campo mais importante para o N1: `session_end_reason = tcp-fin` — fim normal. Outros valores comuns: `tcp-rst-from-client`, `tcp-rst-from-server` (alguém mandou RST), `aged-out` (a sessão ficou parada e o firewall a expirou por tempo — típico de conexão que nunca completou ou de canal ocioso) e `policy-deny`.
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | Receive Time | `2026-09-03 09:14:22` | Quando o firewall recebeu o evento |
+| 2 | Serial Number | `012801234567` | Número de série do equipamento |
+| 3 / 4 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, registrado no fim da conexão |
+| 5 / 6 | Source / Destination Address | `10.10.20.45` / `203.0.113.77` | Origem e destino — **camada 3** |
+| 7 / 8 | Source / Destination Port | `51422` / `443` | Porta efêmera de origem e porta de destino — **camada 4** |
+| 9 | Application | `ssl` | Aplicação identificada por inspeção — **camada 7** |
+| 10 | Protocol | `tcp` | Protocolo de transporte |
+| 11 | Action | `allow` | O veredito da política |
+| 12 / 13 | Source / Destination Zone | `VLAN-USERS` / `INTERNET` | As zonas de origem e destino |
+| 14 / 15 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/1` | Interfaces física de entrada e de saída |
+| 16 | Bytes | `1842` | Total nos dois sentidos |
+| 17 | Packets | `24` | Total de pacotes |
+| 18 / 19 | Bytes Sent / Received | `1310` / `1114` | Volume em cada direção |
+| 20 | Session End Reason | `tcp-fin` | **O campo que o N1 mais usa para triagem.** `tcp-fin` = fim normal; `tcp-rst-from-client`/`-server` = alguém cortou; `aged-out` = a sessão ficou parada e expirou (típico de conexão que nunca completou ou de canal ocioso); `policy-deny` = barrada pela política |
+| 21 | Source User | `jsilva` | Usuário resolvido pelo User-ID |
+| — | — | — | **Este exemplo é um recorte de campos selecionados**, não a ordem real do PAN-OS |
+
+</details>
+
 
 FortiGate, formato chave=valor:
 
@@ -94,6 +116,30 @@ date=2026-09-03 time=09:15:41 devname="FGT-EDGE-01" type="traffic" subtype="forw
 srcip=10.10.20.45 srcport=51988 dstip=203.0.113.90 dstport=445 proto=6
 action="deny" policyid=12 service="SMB" sentbyte=0 rcvdbyte=0 duration=0 user="jsilva"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:15:41` | Hora local do equipamento |
+| `devname` | `"FGT-EDGE-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.20.45` | IP de origem |
+| `srcport` | `51988` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `203.0.113.90` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"SMB"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sentbyte` | `0` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `0` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `duration` | `0` | Duração da sessão em **segundos** |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+
+</details>
 
 `proto=6` é TCP (17 seria UDP). `sentbyte=0` com `action="deny"` significa que nada trafegou: só houve a tentativa.
 
@@ -106,7 +152,27 @@ Cisco ASA:
  to inside:10.10.20.45/51422 duration 0:02:11 bytes 24310 TCP FINs
 ```
 
-`302013` é conexão criada, `302014` é conexão encerrada. O motivo `TCP FINs` indica fim limpo; `TCP Reset-O` (RST vindo de fora) e `SYN Timeout` contam outra história.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `884512` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.77/443` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.77/443)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.20.45/51422` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(198.51.100.10/51422)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| *message ID* (2ª linha) | `302014` | Conexão TCP encerrada. **Contar `302013` e `302014` como dois eventos duplica a mesma sessão** no relatório |
+| id da conexão | `884512` | O **mesmo** número da 1ª linha: é assim que se sabe que falam da mesma conexão |
+| `duration` | `0:02:11` | Quanto tempo a conexão viveu, em `h:mm:ss` |
+| `bytes` | `24310` | Total transferido na sessão. **Só existe no `302014`** — quando o `302013` é escrito, ainda não há o que contar |
+| motivo | `TCP FINs` | Como terminou: `TCP FINs` é fim limpo nos dois sentidos; `TCP Reset-O` é RST vindo de fora (**O** de *Outside*); `TCP Reset-I` de dentro; `SYN Timeout` nunca completou; `Deny Terminate` a política cortou |
+
+</details>
+
 
 Zeek, `conn.log` (colunas resumidas):
 
@@ -115,6 +181,22 @@ ts=1756890862.114  id.orig_h=10.10.20.45  id.orig_p=51422
 id.resp_h=203.0.113.77  id.resp_p=443  proto=tcp  service=ssl
 duration=131.44  orig_bytes=24310  resp_bytes=118422  conn_state=SF  history=ShADadFf
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756890862.114` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `id.orig_h` / `id.orig_p` | `10.10.20.45` / `51422` | Origem e porta de origem — quem abriu a sessão |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77` / `443` | Destino e porta de destino: HTTPS |
+| `proto` | `tcp` | Protocolo de transporte |
+| `service` | `ssl` | Serviço identificado por inspeção do conteúdo, não pela porta |
+| `duration` | `131.44` | Duração em segundos |
+| `orig_bytes` / `resp_bytes` | `24310` / `118422` | Payload em cada direção, sem cabeçalhos |
+| `conn_state` | `SF` | Desfecho da conexão — a tabela abaixo destrincha todos os valores |
+| `history` | `ShADadFf` | **A conexão contada pacote a pacote.** Cada letra é uma flag na ordem em que apareceu; MAIÚSCULA = originador, minúscula = respondedor. `S` SYN, `h` SYN-ACK, `A`/`a` ACK, `D`/`d` dados, `F`/`f` FIN. Aqui: abriu, trocou dados nos dois sentidos e fechou limpo — sem precisar abrir o pacote |
+
+</details>
 
 ### A tabela dos conn_state do Zeek
 
@@ -270,6 +352,24 @@ Source Network Address: 10.10.20.44
 Source Port:            49721
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Event ID` | `4624 (An account was successfully logged on)` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Subject Security ID` | `NULL SID` | SID de quem pediu a ação |
+| `New Logon Account Name` | `maria.costa` | A conta da nova sessão |
+| `New Logon Account Domain` | `CORP` | Domínio da conta da nova sessão |
+| `New Logon Logon ID` | `0x8A31C7` | O identificador da nova sessão |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Workstation Name` | `WKS-0142` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.20.44` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `49721` | Porta de origem, efêmera |
+
+</details>
+
 ```
 Windows Security — Event ID 5140 (A network share object was accessed)
 Account Name:      maria.costa
@@ -283,6 +383,23 @@ Source Port:       49721
 Access Mask:       0x1
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Event ID` | `5140 (A network share object was accessed)` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Logon ID` | `0x8A31C7` | **Costura os eventos da mesma sessão**: o 4624 que a abre, os 5140 de acesso e o 4634 que a fecha trazem o mesmo valor |
+| `Object Type` | `File` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Share Name` | `\\*\Financeiro` | O compartilhamento acedido. **`C$`, `ADMIN$` e `IPC$` são administrativos**, e não uso comum |
+| `Share Path` | `\??\D:\Dados\Financeiro` | Caminho real no disco por trás do compartilhamento |
+| `Source Address` | `10.10.20.44` | IP de origem |
+| `Source Port` | `49721` | Porta de origem, efêmera |
+| `Access Mask` | `0x1` | Permissões pedidas em bits: `0x1` leitura, `0x2` escrita, `0x4` acrescentar |
+
+</details>
+
 ```
 Windows Security — Event ID 4634 (An account was logged off)
 Account Name: maria.costa
@@ -290,7 +407,7 @@ Logon ID:     0x8A31C7
 Logon Type:   3
 ```
 
-**Explicando os campos:** o `Logon ID` (`0x8A31C7`) é a costura que liga os três eventos — mesma sessão, do começo ao fim. O `Logon Type: 3` significa logon de rede (acesso a compartilhamento), diferente do tipo 2 (interativo, teclado da máquina), 10 (RDP) e 5 (serviço). O `Access Mask 0x1` é leitura; `0x2` seria escrita. `Share Name` com `\\*\` significa "qualquer servidor"; o compartilhamento administrativo aparece como `\\*\IPC$` ou `\\*\C$`.
+**Lendo as duas linhas.** A primeira é o retrato de um implante: conectou direto ao IP, sem SNI, com certificado autoassinado e `CN=localhost` contra um endereço público. Se o mesmo `ja3` aparecer em várias estações falando com IPs diferentes e sem SNI, há um binário comum instalado na frota — e é por aí que se acha o resto das máquinas infectadas. A segunda linha é o oposto: TLS 1.3, SNI coerente com o *subject* e cadeia `ok`.
 
 ### O que o SOC N1 observa
 
@@ -368,6 +485,26 @@ Como o conteúdo vai cifrado, o SOC usa **impressões digitais do handshake**, q
 1725364812.441 CkT9x2a 10.10.20.44 51422 203.0.113.77 443 TLSv12 TLS_RSA_WITH_AES_256_CBC_SHA - CN=localhost CN=localhost self signed certificate 51c64c77e60f3980eea90869b68c58a8 ec74a5c51106f0419184d0dd08fb05bc T
 1725364901.207 CmP4r7b 10.10.20.51 51503 198.51.100.20 443 TLSv13 TLS_AES_128_GCM_SHA256 portal.empresa-exemplo.com.br CN=portal.empresa-exemplo.com.br CN=Example RSA CA ok a0e9f5d64349fb13191bc781f81f42e1 f4febc55ea12b31ae17cfb7e614afda8 T
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (suspeita) / 2ª linha (normal) | O que significa |
+|---|---|---|
+| `ts` | `1725364812.441` / `1725364901.207` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CkT9x2a` / `CmP4r7b` | Liga este handshake à conexão correspondente no `conn.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.20.44:51422` / `10.10.20.51:51503` | Cliente e porta efêmera |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77:443` / `198.51.100.20:443` | Servidor e porta |
+| `version` | `TLSv12` / `TLSv13` | Versão do TLS negociada. TLS 1.0 e 1.1 aqui são achado de auditoria |
+| `cipher` | `TLS_RSA_WITH_AES_256_CBC_SHA` / `TLS_AES_128_GCM_SHA256` | Conjunto de cifras acordado. O primeiro usa RSA e CBC — combinação antiga, sem *forward secrecy* |
+| `server_name` | `-` / `portal.empresa-exemplo.com.br` | O SNI (*Server Name Indication*): o nome que o cliente pediu, **visível mesmo com o tráfego cifrado**. Vazio significa conexão direta ao IP, sem nome |
+| `subject` | `CN=localhost` / `CN=portal.empresa-exemplo.com.br` | A quem o certificado foi emitido |
+| `issuer` | `CN=localhost` / `CN=Example RSA CA` | Quem assinou. Emissor igual ao *subject* = autoassinado |
+| `validation_status` | `self signed certificate` / `ok` | Resultado da validação da cadeia contra as CA confiáveis |
+| `ja3` | `51c64c77…` / `a0e9f5d6…` | Impressão digital do **cliente**, derivada de como ele monta o ClientHello. Não muda com o IP nem com o domínio: identifica o binário |
+| `ja3s` | `ec74a5c5…` / `f4febc55…` | A mesma ideia para a resposta do **servidor** — serve para agrupar infraestrutura de C2 |
+| `established` | `T` | O handshake completou (`T`) ou foi interrompido (`F`) |
+
+</details>
 
 **Explicando os campos:** `server_name` vem do SNI (*Server Name Indication*) — o nome que o cliente pediu, visível mesmo com tráfego cifrado. Na primeira linha ele está vazio (`-`): o cliente conectou direto pelo IP, sem nome, comportamento típico de implante e não de navegador. `validation_status` mostra `self signed certificate` contra um IP público, com `CN=localhost` — combinação altamente suspeita. `ja3` identifica o cliente; se o mesmo JA3 aparece em várias estações falando com IPs diferentes e sem SNI, há um binário comum instalado na frota. A segunda linha é o oposto: TLS 1.3, SNI coerente, cadeia `ok`.
 
@@ -502,7 +639,23 @@ Squid `access.log` — varredura de diretórios contra o portal interno:
 1756900012.802    311 10.10.24.87 TCP_MISS/200 8412 GET http://portal.corp.local/uploads/ - HIER_DIRECT/10.10.5.10 text/html
 ```
 
-Campos: timestamp epoch, duração em ms, IP de origem, resultado/status, bytes, método, URL, usuário, destino e tipo de conteúdo. Três `404` seguidos e um `200` em `/uploads/` — o atacante achou um diretório listável.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas quatro linhas | O que significa |
+|---|---|---|
+| *timestamp* | `.331`, `.488`, `.641`, `.802` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. **Quatro pedidos em 471 milissegundos** — velocidade de ferramenta |
+| duração | `142`, `139`, `145`, `311` | Milissegundos. A 4ª demorou o dobro: houve conteúdo real para entregar |
+| cliente | `10.10.24.87` | Sempre a mesma origem — é ela que está varrendo |
+| resultado/status | `TCP_MISS/404` ×3, depois `TCP_MISS/200` | **A sequência é o achado**: três caminhos que não existem e um que existe |
+| bytes | `512`, `512`, `512`, `8412` | Os `404` devolvem sempre a mesma página de erro; o `200` devolveu 8 KB de conteúdo |
+| método | `GET` | Pedido simples de leitura |
+| URL | `/admin/`, `/backup/`, `/.git/config`, `/uploads/` | **A lista denuncia a intenção**: são caminhos de dicionário de ferramenta de varredura, e `/.git/config` é tentativa de ler o repositório do site |
+| usuário | `-` | Sem autenticação no proxy |
+| hierarquia/destino | `HIER_DIRECT/10.10.5.10` | O proxy foi direto ao portal interno |
+| tipo de conteúdo | `text/html` | O MIME devolvido |
+
+</details>
+
 
 Zeek `http.log` — User-Agent anômalo:
 
@@ -511,6 +664,23 @@ Zeek `http.log` — User-Agent anômalo:
 1756900130.221  CvT8gh2Kd  10.10.24.87  51422  203.0.113.45  443  POST  cdn-update.example.com  /api/v2/telemetry  python-requests/2.31.0  200  48
 1756900190.204  CvT8gh2Kd  10.10.24.87  51438  203.0.113.45  443  POST  cdn-update.example.com  /api/v2/telemetry  python-requests/2.31.0  200  48
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756900130.221` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CvT8gh2Kd` | Conexão que transportou esta requisição — cruza com o `conn.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.24.87` / `51422` | Cliente e porta de origem |
+| `id.resp_h` / `id.resp_p` | `203.0.113.45` / `443` | Servidor e porta |
+| `method` | `POST` | Método HTTP. `POST` repetido para o mesmo caminho é envio de dados, não navegação |
+| `host` | `cdn-update.example.com` | Cabeçalho `Host` — o domínio que o cliente pediu. Nomes que imitam CDN são disfarce comum |
+| `uri` | `/api/v2/telemetry` | Caminho requisitado. "telemetria" é rótulo frequente em canal de C2 |
+| `user_agent` | `python-requests/2.31.0` | Como o cliente se identifica. **Biblioteca de script, não navegador** — numa estação de usuário é sinal forte |
+| `status_code` | `200` | Resposta HTTP do servidor |
+| `resp_body_len` | `48` | Tamanho do corpo devolvido, em bytes. Sempre igual = resposta programada, não conteúdo |
+
+</details>
 
 POST repetido a cada 60 s, resposta sempre de 48 bytes: batimento (beacon) de C2. Um usuário real nunca é tão pontual.
 
@@ -528,6 +698,28 @@ FortiGate WAF (formato chave=valor):
 date=2026-09-03 time=11:45:02 devname="FGT-DC01" type="utm" subtype="waf" action="blocked" srcip=198.51.100.77 dstip=10.10.5.10 service="HTTPS" url="/uploads/img.aspx" httpmethod="PUT" agent="curl/8.4.0" attack="Web Shell Upload" severity="critical" msg="WAF signature match"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `11:45:02` | Hora local do equipamento |
+| `devname` | `"FGT-DC01"` | Nome do equipamento que gerou o log |
+| `type` | `"utm"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"waf"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `action` | `"blocked"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `srcip` | `198.51.100.77` | IP de origem |
+| `dstip` | `10.10.5.10` | IP de destino |
+| `service` | `"HTTPS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `url` | `"/uploads/img.aspx"` | URL pedida |
+| `httpmethod` | `"PUT"` | Método HTTP do pedido |
+| `agent` | `"curl/8.4.0"` | *User-agent* declarado pelo cliente. **Biblioteca ou ferramenta aqui, numa estação de usuário, é anomalia** |
+| `attack` | `"Web Shell Upload"` | Nome da assinatura de IPS que disparou |
+| `severity` | `"critical"` | Gravidade atribuída à assinatura |
+| `msg` | `"WAF signature match"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
+
 `PUT` de um `.aspx` para `/uploads/`, com `curl` — tentativa de subir web shell, bloqueada.
 
 Sysmon Event ID 1 (criação de processo) — o EDR vendo o resultado no endpoint:
@@ -540,6 +732,19 @@ ParentImage: C:\Windows\System32\inetsrv\w3wp.exe
 CommandLine: cmd.exe /c whoami
 User: CORP\svc_web
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `1` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `1` = Sysmon **Process Create** |
+| `UtcTime` | `2026-09-03 11:46:31.402` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Windows\System32\cmd.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `ParentImage` | `C:\Windows\System32\inetsrv\w3wp.exe` | Caminho do processo **pai**. **É aqui que o Sysmon brilha**: Word ou Excel como pai de `powershell.exe` é sinal forte por si só |
+| `CommandLine` | `cmd.exe /c whoami` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+| `User` | `CORP\svc_web` | Conta sob a qual o processo corre |
+
+</details>
 
 O servidor web (`w3wp.exe`) sendo **pai** de um `cmd.exe` é o padrão clássico de web shell executando comando. Nenhum servidor web saudável faz isso.
 

@@ -190,7 +190,22 @@ tls.handshake.type == 11
 1725360012.481  CkAbc1  10.10.10.50  50122  203.0.113.45  443  TLSv12  TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256  www.example.com  T  a0e9f5b2c7d31e4f6a8b0c2d4e6f8a1b
 ```
 
-Campos: `id.orig_h` é o cliente, `id.resp_h` o servidor, `server_name` é o SNI, `established` diz se o handshake completou e `ja3` é a impressão digital do cliente TLS — útil para agrupar malware que usa sempre a mesma biblioteca.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1725360012.481` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CkAbc1` | Identificador único da conexão — cruza com o `conn.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.10.50` / `50122` | O cliente do laboratório e sua porta efêmera |
+| `id.resp_h` / `id.resp_p` | `203.0.113.45` / `443` | O servidor e a porta |
+| `version` | `TLSv12` | Versão do TLS negociada |
+| `cipher` | `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256` | Conjunto de cifras acordado |
+| `server_name` | `www.example.com` | O SNI: o nome que o cliente pediu, visível mesmo com o tráfego cifrado |
+| `established` | `T` | O handshake completou (`T`) ou foi interrompido (`F`) |
+| `ja3` | `a0e9f5b2c7d31e4…` | Impressão digital do cliente TLS. **Compare o seu valor com o do exemplo**: como depende do programa que abriu a conexão, o `curl` e o navegador dão `ja3` diferentes |
+
+</details>
+
 
 **O que o SOC N1 observa:** normal é SNI coerente com o destino e handshake concluído (`established=T`). Suspeito é conexão TLS para IP puro sem SNI, SNI que não bate com o certificado, ou o mesmo JA3 saindo de dezenas de estações para destinos diferentes.
 
@@ -284,7 +299,22 @@ Zeek `dns.log` (o registro que o SOC mais usa para DNS):
 1757001140.002  CxT8k23  10.10.20.45  52001  10.10.0.53  53  udp  aGVsbG8td29ybGQtdGVzdGUtZGUtbGFiLTAwMQ.tunel.example.com  TXT  NOERROR  "OK"
 ```
 
-Campos que importam: `id.orig_h` é quem perguntou (a estação); `id.resp_h` é o servidor DNS; `query` é o nome consultado; `qtype_name` é o tipo de registro; `rcode_name` é o código de resposta; `answers` é o que voltou.
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª (normal) / 2ª (NXDOMAIN) / 3ª (túnel) | O que significa |
+|---|---|---|
+| `ts` | `1757001102.114` / `1757001133.870` / `1757001140.002` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CxT8k21` / `CxT8k22` / `CxT8k23` | Identificador único de cada consulta |
+| `id.orig_h` / `id.orig_p` | `10.10.20.45` / `51422`, `51890`, `52001` | A estação e a porta efêmera de cada consulta |
+| `id.resp_h` / `id.resp_p` | `10.10.0.53` / `53` | O resolvedor interno, na porta 53 |
+| `proto` | `udp` | Consulta DNS sobre UDP |
+| `query` | `example.com` / `nao-existe-mesmo-9f3k.example.com` / `aGVsbG8td29ybGQ…tunel.example.com` | O nome consultado. A 3ª tem o rótulo em **Base64** — decodificado dá texto legível, e é assim que se confirma tunelamento |
+| `qtype_name` | `A` / `A` / `TXT` | Tipo de registro. O `TXT` da 3ª é o que transporta o dado |
+| `rcode_name` | `NOERROR` / `NXDOMAIN` / `NOERROR` | Resultado. `NXDOMAIN` significa que o nome não existe |
+| `answers` | `203.0.113.25` / `-` / `"OK"` | A resposta. Vazia no `NXDOMAIN`; na 3ª é a confirmação do servidor do túnel |
+
+</details>
+
 
 O mesmo evento em um firewall Palo Alto (log TRAFFIC em CSV, campos simplificados):
 
@@ -292,7 +322,32 @@ O mesmo evento em um firewall Palo Alto (log TRAFFIC em CSV, campos simplificado
 1,2026/09/03 10:32:20,001801000123,TRAFFIC,end,10.10.20.45,10.10.0.53,0.0.0.0,0.0.0.0,regra-dns-saida,jsilva,,dns,vsys1,Confianca,Servidores,ethernet1/2,ethernet1/3,Log-Padrao,52001,53,udp,allow,178,89,89,2
 ```
 
-Leitura: origem `10.10.20.45`, destino `10.10.0.53`, aplicação `dns`, porta destino `53`, protocolo `udp`, ação `allow`, 178 bytes trafegados, 2 pacotes.
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | — | `1` | Reservado pelo fabricante |
+| 2 | Receive Time | `2026/09/03 10:32:20` | Quando o firewall registrou |
+| 3 | Serial Number | `001801000123` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 6 / 7 | Source / Destination Address | `10.10.20.45` / `10.10.0.53` | A estação do laboratório e **o servidor DNS interno** |
+| 8 / 9 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | Sem NAT: é tráfego interno |
+| 10 | Rule Name | `regra-dns-saida` | A regra que permitiu a consulta |
+| 11 / 12 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 | Application | `dns` | **App-ID identificou DNS inspecionando o conteúdo.** Se alguém tunelasse outra coisa na 53, o App-ID não diria `dns` |
+| 14 | Virtual System | `vsys1` | Firewall virtual |
+| 15 / 16 | Source / Destination Zone | `Confianca` / `Servidores` | Da zona de usuários para a de servidores |
+| 17 / 18 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/3` | Interfaces de entrada e saída |
+| 19 | Log Action | `Log-Padrao` | Perfil de encaminhamento |
+| 20 / 21 | Source / Destination Port | `52001` / `53` | Porta efêmera e **53, o DNS** |
+| 22 / 23 | Protocol / Action | `udp` / `allow` | **`udp`**: o DNS usa UDP por padrão — e por isso não há handshake nem estado |
+| 24 | Bytes | `178` | Total nos dois sentidos: uma consulta e uma resposta caberiam nisto |
+| 25 / 26 | Bytes Sent / Received | `89` / `89` | Volume simétrico, típico de pergunta-e-resposta |
+| 27 | Packets | `2` | **Dois pacotes**: a consulta e a resposta |
+| — | — | — | **Recorte de 27 campos**; o formato completo tem mais de 46 |
+
+</details>
+
 
 ### O que o SOC N1 observa
 
@@ -411,6 +466,23 @@ DestinationIp: 203.0.113.77
 DestinationPort: 80
 DestinationHostname: cdn-update.empresa-exemplo.com.br
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `3` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `3` = Sysmon **Network Connect** |
+| `UtcTime` | `2026-09-03 11:04:18.198` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Users\jsilva\AppData\Local\Temp\svhost.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `SourceIp` | `10.10.20.45` | IP de origem da conexão |
+| `SourcePort` | `49721` | Porta de origem |
+| `DestinationIp` | `203.0.113.77` | IP de destino da conexão |
+| `DestinationPort` | `80` | Porta de destino |
+| `DestinationHostname` | `cdn-update.empresa-exemplo.com.br` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
 
 O `Image` apontando para `AppData\Local\Temp` com nome imitando processo do sistema (`svhost.exe` em vez de `svchost.exe`) é o achado que fecha a história: o pacote na rede tem dono no endpoint.
 

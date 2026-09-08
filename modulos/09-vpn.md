@@ -204,13 +204,65 @@ Fase 1 e fase 2 completas, túnel de pé, no Cisco ASA:
 %ASA-6-602303: IPSEC: An outbound remote access SA (SPI= 0x77F31DE9) between 198.51.100.10 and 203.0.113.9 (user= jsilva) has been created.
 ```
 
-Campos que importam: `PHASE 1 COMPLETED` confirma o canal de controle; `SPI` (Security Parameter Index) é o identificador numérico daquela SA — é ele que amarra um pacote ESP a um túnel específico; `Inbound`/`Outbound` mostram as duas SAs unidirecionais.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto |
+| severidade | `5` e `6` | `5` é notification, `6` é informational |
+| *message ID* (1ª linha) | `713119` | **Fase 1 do IKE concluída**: o canal de controle do IPsec está de pé. É por este ID que se escreve a regra, não pelo texto |
+| `Group` / `IP` | `203.0.113.9` | O par remoto do túnel. Em VPN site-a-site o grupo é o próprio IP do peer |
+| *message ID* (2ª linha) | `713049` | Negociação de segurança concluída — a **fase 2**, que cria os canais de dados |
+| `LAN-to-LAN group` | `(FILIAL-RECIFE)` | O nome do túnel na configuração. **É o que traduz um IP em "a filial do Recife"** |
+| `Responder` | `Responder` | Quem foi **respondedor**, e não iniciador: o outro lado começou |
+| `Inbound` / `Outbound SPI` | `0x0a4b71c2` / `0x77f31de9` | O **SPI** (*Security Parameter Index*) identifica cada canal de dados. **São dois, um por sentido** — e mudam a cada renegociação, por isso não servem como identificador de longo prazo |
+| *message ID* (3ª linha) | `602303` | SA de IPsec criada. Confirma no plano de dados o que as duas primeiras negociaram |
+| `(user= jsilva)` | `jsilva` | Utilizador associado à SA |
+
+</details>
+
 
 Erro 1 — **proposta não coincide** (FortiGate, formato key=value):
 
 ```
 date=2026-09-03 time=09:14:22 devname="FW-SP" devid="FG100F0000000001" logid="0101037124" type="event" subtype="vpn" level="error" vd="root" eventtime=1772529262 logdesc="IPsec phase 1 error" msg="progress IPsec phase 1" action="negotiate" remip=203.0.113.9 locip=198.51.100.10 remport=500 locport=500 outintf="wan1" cookies="a1b2c3d4e5f60718/0000000000000000" user="N/A" group="N/A" xauthuser="N/A" xauthgroup="N/A" assignip=N/A vpntunnel="FILIAL-RECIFE" status="negotiate_error" reason="no SA proposal chosen" peer_notif="NOT-APPLICABLE"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:14:22` | Hora local do equipamento |
+| `devname` | `"FW-SP"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0101037124"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"event"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"vpn"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"error"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `vd` | `"root"` | *Virtual domain* (VDOM): qual firewall virtual atendeu |
+| `eventtime` | `1772529262` | Instante do evento em epoch, com precisão de nanossegundos |
+| `logdesc` | `"IPsec phase 1 error"` | Descrição do tipo de evento, em texto |
+| `msg` | `"progress IPsec phase 1"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+| `action` | `"negotiate"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `remip` | `203.0.113.9` | IP público **remoto** do outro lado do túnel — de onde o usuário ou o peer veio |
+| `locip` | `198.51.100.10` | IP local do concentrador VPN |
+| `remport` | `500` | Porta remota do túnel |
+| `locport` | `500` | Porta local do túnel |
+| `outintf` | `"wan1"` | Interface de saída do túnel |
+| `cookies` | `"a1b2c3d4e5f60718/0000000000000000"` | Cookies do IKE, que identificam a negociação em curso |
+| `user` | `"N/A"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `group` | `"N/A"` | Grupo a que a conta pertence |
+| `xauthuser` | `"N/A"` | Conta usada na autenticação estendida do IPsec |
+| `xauthgroup` | `"N/A"` | Grupo da autenticação estendida |
+| `assignip` | `N/A` | **O IP interno que a empresa emprestou** à máquina remota. Depois de o túnel subir, é este endereço que aparece no tráfego interno, e não o `remip` |
+| `vpntunnel` | `"FILIAL-RECIFE"` | Nome do túnel na configuração — o que traduz um IP em "a filial tal" |
+| `status` | `"negotiate_error"` | Estado da negociação |
+| `reason` | `"no SA proposal chosen"` | **O campo que resolve o caso**: por que falhou ou por que terminou |
+| `peer_notif` | `"NOT-APPLICABLE"` | Notificação enviada ao outro lado do túnel |
+| — | — | `remip` é o IP público de quem se ligou; **`assignip` é o endereço interno que ele passou a usar**. Sem correlacionar os dois, o rastro do usuário desaparece ao entrar na rede |
+
+</details>
 
 `reason="no SA proposal chosen"` é literalmente "não achei uma proposta em comum". Alguém mexeu na cifra ou no grupo DH de um dos lados.
 
@@ -222,6 +274,21 @@ Erro 2 — **PSK diferente**:
 %ASA-3-713119: Group = 203.0.113.9, IP = 203.0.113.9, PHASE 1 FAILED
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto |
+| severidade | `3` e `5` | **`3` é error** nas linhas 1 e 3, `5` é notification na 2ª. A subida de severidade acompanha a gravidade |
+| *message ID* (1ª linha) | `713048` | Erro a processar *payload* do IKE. Sintoma, não causa |
+| `Payload ID: 1` | `1` | Qual parte da mensagem falhou |
+| *message ID* (2ª linha) | `713904` | **A causa real: nenhuma proposta de SA do IKE foi aceita.** Os dois lados não têm um conjunto comum de cifra, hash, grupo Diffie-Hellman e tempo de vida |
+| *message ID* (3ª linha) | `713119` | **`PHASE 1 FAILED`** — o mesmo ID do exemplo anterior, onde dizia `COMPLETED`. **O ID não distingue sucesso de falha**; quem distingue é o texto e a severidade |
+| `Group` / `IP` | `203.0.113.9` | O par remoto que tentou |
+| — | — | Erro de **configuração**, não ataque: alguém mudou a proposta de um lado só. O caminho é comparar as duas configurações, não procurar comprometimento |
+
+</details>
+
 Em FortiGate o mesmo problema aparece como `reason="peer SA proposal not match local policy"` ou, mais claramente, uma falha de decriptação da mensagem de autenticação. A pista é a fase 1 falhar **depois** da troca DH.
 
 Erro 3 — **fase 1 sobe, fase 2 não** (o clássico):
@@ -229,6 +296,32 @@ Erro 3 — **fase 1 sobe, fase 2 não** (o clássico):
 ```
 date=2026-09-03 time=09:31:07 devname="FW-SP" logid="0101037129" type="event" subtype="vpn" level="error" logdesc="IPsec phase 2 error" msg="progress IPsec phase 2" action="negotiate" remip=203.0.113.9 locip=198.51.100.10 outintf="wan1" cookies="a1b2c3d4e5f60718/9f8e7d6c5b4a3021" vpntunnel="FILIAL-RECIFE_p2" status="negotiate_error" reason="peer SA proposal not match local policy" srcaddr="10.10.0.0/255.255.0.0" dstaddr="172.16.20.0/255.255.255.0"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:31:07` | Hora local do equipamento |
+| `devname` | `"FW-SP"` | Nome do equipamento que gerou o log |
+| `logid` | `"0101037129"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"event"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"vpn"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"error"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `logdesc` | `"IPsec phase 2 error"` | Descrição do tipo de evento, em texto |
+| `msg` | `"progress IPsec phase 2"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+| `action` | `"negotiate"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `remip` | `203.0.113.9` | IP público **remoto** do outro lado do túnel — de onde o usuário ou o peer veio |
+| `locip` | `198.51.100.10` | IP local do concentrador VPN |
+| `outintf` | `"wan1"` | Interface de saída do túnel |
+| `cookies` | `"a1b2c3d4e5f60718/9f8e7d6c5b4a3021"` | Cookies do IKE, que identificam a negociação em curso |
+| `vpntunnel` | `"FILIAL-RECIFE_p2"` | Nome do túnel na configuração — o que traduz um IP em "a filial tal" |
+| `status` | `"negotiate_error"` | Estado da negociação |
+| `reason` | `"peer SA proposal not match local policy"` | **O campo que resolve o caso**: por que falhou ou por que terminou |
+| `srcaddr` | `"10.10.0.0/255.255.0.0"` | Objeto de endereço de origem na configuração |
+| `dstaddr` | `"172.16.20.0/255.255.255.0"` | Objeto de endereço de destino na configuração |
+
+</details>
 
 Repare em `srcaddr` e `dstaddr`: são os *proxy IDs*. Se a matriz espera `10.10.0.0/16 ↔ 172.16.20.0/24` e a filial foi configurada com `10.10.5.0/24 ↔ 172.16.20.0/24`, a fase 1 sobe (os gateways se autenticam) e a fase 2 morre (as redes não batem). Fase 1 verde com fase 2 vermelha é quase sempre proxy ID divergente ou cifra da fase 2 diferente.
 
@@ -239,6 +332,22 @@ Visão do Zeek (`conn.log`) sobre o mesmo túnel:
 1772529262.114  CpQ7xR2mNv9Lk  203.0.113.9  500  198.51.100.10  500  udp  ike  4.221  1840  1976  SF
 1772529266.902  CvT4bZ8aHy1Wd  203.0.113.9  4500  198.51.100.10  4500  udp  -  3600.004  18442190  9931044  SF
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (negociação) / 2ª linha (túnel) | O que significa |
+|---|---|---|
+| `ts` | `1772529262.114` / `1772529266.902` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos — o túnel sobe 4 segundos depois de a negociação terminar |
+| `uid` | `CpQ7xR2mNv9Lk` / `CvT4bZ8aHy1Wd` | Identificador único de cada conexão |
+| `id.orig_h` / `id.resp_h` | `203.0.113.9` → `198.51.100.10` | Os dois concentradores VPN, por IP público |
+| `id.orig_p` / `id.resp_p` | `500`/`500` e `4500`/`4500` | As portas contam a história: **500/UDP é o IKE** (negociação de chaves) e **4500/UDP é o NAT-T**, o ESP encapsulado em UDP para atravessar NAT |
+| `proto` | `udp` | O IPsec negocia e encapsula sobre UDP quando há NAT no caminho |
+| `service` | `ike` / `-` | O Zeek reconhece o IKE; o túnel de dados aparece como `-` porque **o conteúdo está cifrado e ele não identifica nada lá dentro** |
+| `duration` | `4.221` / `3600.004` | Negociação de 4 segundos; túnel de 1 hora — valor típico de vida de uma SA antes da renegociação |
+| `orig_bytes` / `resp_bytes` | `1840`/`1976` e `18442190`/`9931044` | Payload em cada direção. A negociação troca poucos KB; o túnel moveu 18 MB e 9,9 MB |
+| `conn_state` | `SF` | Ambas normais. Em UDP o Zeek usa `SF` para o fluxo que começou e terminou dentro da janela de observação — **não há handshake para confirmar** |
+
+</details>
 
 A primeira linha é a negociação (curta, poucos bytes, na 500). A segunda é o túnel de dados via NAT-T na 4500: longa duração e volume alto. `SF` significa conexão normal iniciada e finalizada.
 
@@ -270,6 +379,20 @@ O segundo erro mais comum: tratar toda falha de fase 1 como ataque. Renovação 
 %ASA-5-713119: Group = 203.0.113.9, IP = 203.0.113.9, PHASE 1 COMPLETED
 %ASA-3-713061: Group = 203.0.113.9, IP = 203.0.113.9, Rejecting IPSec tunnel: no matching crypto map entry for remote proxy 172.16.99.0/255.255.255.0 local proxy 10.10.0.0/255.255.0.0
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto |
+| severidade | `5` e `3` | Notification na 1ª linha, **error na 2ª** |
+| *message ID* (1ª linha) | `713119` | `PHASE 1 COMPLETED` — **a autenticação funcionou**. É importante notar isto antes de ler a 2ª linha |
+| *message ID* (2ª linha) | `713061` | Túnel IPsec rejeitado por não haver *crypto map* correspondente. **A fase 1 passou e a fase 2 falhou** |
+| `remote proxy` | `172.16.99.0/255.255.255.0` | A rede que o **outro lado** quer alcançar |
+| `local proxy` | `10.10.0.0/255.255.0.0` | A rede que **este lado** oferece |
+| — | — | **É aqui que está o erro**: os dois lados têm de declarar exatamente as mesmas redes, espelhadas. O `172.16.99.0/24` não consta da configuração local. Máscara ou sub-rede diferente por um bit já basta para o túnel não fechar |
+
+</details>
 
 3. Um alerta dispara: "VPN IPsec — 47 falhas de fase 1 em 6 minutos, origem 198.51.100.77, gateway 198.51.100.10". O peer legítimo da filial Recife é `203.0.113.9`. Verdadeiro ou falso positivo? Qual o próximo passo?
 
@@ -529,6 +652,37 @@ Como o `Test-NetConnection` não testa UDP de forma confiável, para UDP 1194/50
 date=2026-09-03 time=09:12:44 devname="fgt-edge-01" devid="FG100E0000000001" logid="0101039426" type="event" subtype="vpn" level="error" vd="root" action="negotiate" remip=203.0.113.45 locip=198.51.100.7 remport=500 locport=500 outintf="wan1" cookies="N/A" user="jsilva" group="N/A" xauthuser="N/A" xauthgroup="N/A" assignip=N/A vpntunnel="SSLVPN-CORP" status="failure" reason="peer SA proposal not match local policy"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:12:44` | Hora local do equipamento |
+| `devname` | `"fgt-edge-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100E0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0101039426"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"event"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"vpn"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"error"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `vd` | `"root"` | *Virtual domain* (VDOM): qual firewall virtual atendeu |
+| `action` | `"negotiate"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `remip` | `203.0.113.45` | IP público **remoto** do outro lado do túnel — de onde o usuário ou o peer veio |
+| `locip` | `198.51.100.7` | IP local do concentrador VPN |
+| `remport` | `500` | Porta remota do túnel |
+| `locport` | `500` | Porta local do túnel |
+| `outintf` | `"wan1"` | Interface de saída do túnel |
+| `cookies` | `"N/A"` | Cookies do IKE, que identificam a negociação em curso |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `group` | `"N/A"` | Grupo a que a conta pertence |
+| `xauthuser` | `"N/A"` | Conta usada na autenticação estendida do IPsec |
+| `xauthgroup` | `"N/A"` | Grupo da autenticação estendida |
+| `assignip` | `N/A` | **O IP interno que a empresa emprestou** à máquina remota. Depois de o túnel subir, é este endereço que aparece no tráfego interno, e não o `remip` |
+| `vpntunnel` | `"SSLVPN-CORP"` | Nome do túnel na configuração — o que traduz um IP em "a filial tal" |
+| `status` | `"failure"` | Estado da negociação |
+| `reason` | `"peer SA proposal not match local policy"` | **O campo que resolve o caso**: por que falhou ou por que terminou |
+
+</details>
+
 Campos: `remip` é o IP público do usuário; `remport=500` mostra que é IKE; `status=failure` e `reason` explicam a negociação quebrada. Se o log **não existe**, o pacote nem chegou — aí o bloqueio é na rede do hotel, não no firewall da empresa.
 
 Conta bloqueada aparece no Windows Security como 4625 com substatus específico:
@@ -539,6 +693,21 @@ Failure Reason: Account locked out
 Status: 0xC0000234   Sub Status: 0xC0000234
 Logon Type: 3        Source Network Address: 203.0.113.45
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Reason` | `Account locked out` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC0000234` | Código geral do resultado. `0xC0000234` = conta **bloqueada** |
+| `Sub Status` | `0xC0000234` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC0000234` = conta **bloqueada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Source Network Address` | `203.0.113.45` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+
+</details>
 
 Tabela de tradução rápida dos códigos de falha (4625/4776):
 
@@ -564,7 +733,23 @@ Tabela de tradução rápida dos códigos de falha (4625/4776):
 %ASA-4-113019: Group = SSLVPN-CORP, Username = jsilva, IP = 203.0.113.45, Session disconnected. Session Type: SSL, Duration: 0h:03m:12s, Bytes xmt: 184320, Bytes rcv: 92160, Reason: Idle Timeout
 ```
 
-`Reason` é o campo que resolve o caso: `Idle Timeout`, `User Requested`, `Lost Service` ou `Administrator Reset` contam histórias diferentes.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `4` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `4` é **warning**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `113019` | Sessão de VPN de acesso remoto encerrada. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| `Group` | `SSLVPN-CORP` | O grupo de políticas aplicado à sessão |
+| `Username` | `jsilva` | **A conta, e não só o IP.** É o que permite investigar por pessoa |
+| `IP` | `203.0.113.45` | O endereço público de onde o usuário se ligou |
+| `Session Type` | `SSL` | SSL VPN (portal ou cliente), em contraste com IPsec |
+| `Duration` | `0h:03m:12s` | Quanto tempo a sessão durou |
+| `Bytes xmt` / `rcv` | `184320` / `92160` | **Transmitidos e recebidos do ponto de vista do firewall**: `xmt` é o que o ASA enviou ao usuário. Confundir o sentido inverte a leitura de exfiltração |
+| `Reason` | `Idle Timeout` | **O campo que resolve o caso.** `Idle Timeout` é inatividade; `User Requested` é o usuário a desligar; `Lost Service` é queda de rede; `Administrator Reset` é alguém a derrubar a sessão |
+
+</details>
+
 
 **Resolver:** ajustar keepalive/DPD (Dead Peer Detection), trocar UDP por TCP em redes com NAT agressivo, revisar timeout de sessão.
 
@@ -659,11 +844,46 @@ Logon Process: Kerberos   Authentication Package: Kerberos
 Impersonation Level: Impersonation
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Source Network Address` | `198.51.100.212` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `51544` | Porta de origem, efêmera |
+| `Logon Process` | `Kerberos` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `Kerberos` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Impersonation Level` | `Impersonation` | Até onde o processo pode agir em nome do utilizador |
+
+</details>
+
 E o Netskope registrando origem em nó Tor:
 
 ```
 timestamp=2026-09-03T02:14:07Z user=maria.costa@empresa-exemplo.com.br srcip=198.51.100.212 src_country=RO src_asn="AS64500 EXAMPLE-HOSTING" activity=Login category="Cloud Storage" app="Corp Drive" alert=yes alert_name="anomalous_location" access_method=Client action=allow
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `timestamp` | `2026-09-03T02:14:07Z` | Instante do evento conforme a plataforma que o gerou |
+| `user` | `maria.costa@empresa-exemplo.com.br` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `srcip` | `198.51.100.212` | IP de origem |
+| `src_country` | `RO` | País de origem por geolocalização |
+| `src_asn` | `"AS64500 EXAMPLE-HOSTING"` | **ASN da origem**: o sistema autônomo, ou seja de quem é aquele bloco de IP. Mais estável que o IP para reconhecer infraestrutura |
+| `activity` | `Login` | Ação do usuário classificada pela plataforma (`Upload`, `Login`, `Share`) |
+| `category` | `"Cloud Storage"` | Categoria atribuída ao destino |
+| `app` | `"Corp Drive"` | Aplicação identificada pelo controle de aplicação, por inspeção do conteúdo |
+| `alert` | `yes` | Se o evento gerou alerta |
+| `alert_name` | `"anomalous_location"` | Nome da política que gerou o alerta |
+| `access_method` | `Client` | Como o tráfego foi capturado (`Client`, `Reverse Proxy`, `API`) |
+| `action` | `allow` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+
+</details>
 
 `src_asn` de hospedagem + `src_country` fora do padrão + horário de madrugada formam três indicadores fracos que, somados, viram um alerta forte. Isso mapeia para MITRE ATT&CK **T1078** (Valid Accounts) e, quando há acesso pelo serviço remoto externo, **T1133** (External Remote Services).
 

@@ -148,7 +148,23 @@ O SIEM não vê o pacote, mas vê a mesma sessão. Zeek `conn.log` (campos separ
 1756880412.113    CjHk2a1Yx9QbNf3m   10.10.20.45  51422      203.0.113.77    443        tcp    ssl      1801.442  18422       9633        SF
 ```
 
-`ts` = epoch UTC; `uid` = identificador único da conexão (use-o para cruzar com `ssl.log` e `dns.log`); `id.orig_h`/`id.orig_p` = origem e porta; `id.resp_h`/`id.resp_p` = destino e porta; `duration` = 30 minutos de sessão; `conn_state` `SF` = conexão estabelecida e encerrada normalmente.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756880412.113` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CjHk2a1Yx9QbNf3m` | Identificador único da conexão. **É a ponte entre o pacote e o SIEM**: com ele você acha esta mesma sessão no `ssl.log` e no `dns.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.20.45` / `51422` | Cliente e porta efêmera |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77` / `443` | Servidor externo e porta HTTPS |
+| `proto` | `tcp` | Transporte |
+| `service` | `ssl` | Serviço identificado pela inspeção do conteúdo |
+| `duration` | `1801.442` | Duração: 30 minutos com a conexão aberta |
+| `orig_bytes` | `18422` | Payload enviado pelo cliente |
+| `resp_bytes` | `9633` | Payload devolvido. **Meia hora de sessão movendo só 28 KB** — não é navegação nem download; é canal mantido aberto |
+| `conn_state` | `SF` | Conexão completa e encerrada normalmente |
+
+</details>
+
 
 Palo Alto, TRAFFIC em CSV (campos relevantes):
 
@@ -156,7 +172,31 @@ Palo Alto, TRAFFIC em CSV (campos relevantes):
 1,2026/09/03 14:20:11,013201004567,TRAFFIC,end,2561,2026/09/03 14:20:11,10.10.20.45,203.0.113.77,0.0.0.0,0.0.0.0,regra-saida-corp,corp\maria.costa,,ssl,vsys1,Trust,Untrust,ethernet1/2,ethernet1/1,Log-Forward,2026/09/03 14:20:11,88213,1,51422,443,0,0,0x19,tcp,allow,28055,18422,9633,64,...
 ```
 
-Leitura: tipo `TRAFFIC`, ação `allow`, usuário `corp\maria.costa`, origem `10.10.20.45:51422`, destino `203.0.113.77:443`, aplicação `ssl`, 28.055 bytes totais.
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1, 6 | — | `1`, `2561` | Reservados pelo fabricante |
+| 2 / 7 | Receive / Generated Time | `2026/09/03 14:20:11` | Quando o firewall recebeu e quando ocorreu |
+| 3 | Serial Number | `013201004567` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 8 / 9 | Source / Destination Address | `10.10.20.45` / `203.0.113.77` | **O mesmo par que você acabou de ver no Wireshark** — o firewall vê a sessão, não os pacotes |
+| 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | Sem NAT nesta sessão |
+| 12 | Rule Name | `regra-saida-corp` | A regra que permitiu |
+| 13 / 14 | Source / Destination User | `corp\maria.costa` / *(vazio)* | Usuário resolvido |
+| 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
+| 17 / 18 | Source / Destination Zone | `Trust` / `Untrust` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/1` | Interfaces de entrada e saída |
+| 21 / 22 | Log Action / — | `Log-Forward` / `2026/09/03 14:20:11` | Perfil de log e campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `88213` / `1` | Sessão e contagem |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | **A mesma porta efêmera do pacote no Wireshark** — é por ela que se casa a captura com o log |
+| 27 / 28 | NAT Source / Destination Port | `0` / `0` | Sem tradução |
+| 29 | Flags | `0x19` | Bits da sessão (valor diferente do `0x400053` dos outros exemplos: aqui não houve NAT) |
+| 30 / 31 | Protocol / Action | `tcp` / `allow` | Protocolo e veredito |
+| 32 / 33 / 34 / 35 | Bytes / Sent / Received / Packets | `28055` / `18422` / `9633` / `64` | Volume total, por direção, e pacotes. **O Wireshark contaria mais bytes**, porque conta cabeçalhos que o firewall não soma |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: sessões SSL curtas para domínios conhecidos, bytes de resposta maiores que os de envio (navegação). Suspeito: sessão de 30 minutos para um IP sem SNI reconhecido, com envio maior que a resposta — padrão de exfiltração ou de canal C2 (MITRE ATT&CK T1071 — *Application Layer Protocol*).
 
@@ -319,13 +359,51 @@ O que você vê no Wireshark tem um equivalente no SIEM. O Zeek registra o mesmo
 1756900812.441  CqR8xT1  10.10.5.31  51877  203.0.113.77  443  TLSv12  painel.example.com  a0e9f5b6...  T
 ```
 
-Campos: `ts` é o horário em época Unix; `uid` é o identificador único da conexão (permite cruzar com `conn.log`); `id.orig_h`/`id.resp_h` são origem e destino; `server_name` é o mesmo SNI do Wireshark; `ja3` é a impressão digital do cliente TLS — clientes escritos em Python ou ferramentas ofensivas têm JA3 diferente de navegador.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756900812.441` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CqR8xT1` | Identificador único da conexão — permite cruzar com o `conn.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.5.31` / `51877` | Cliente e porta efêmera |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77` / `443` | Servidor e porta |
+| `version` | `TLSv12` | Versão do TLS negociada |
+| `server_name` | `painel.example.com` | O SNI do ClientHello — **o mesmo campo que você acabou de ver no Wireshark**, agora já extraído |
+| `ja3` | `a0e9f5b6…` | Impressão digital do cliente TLS, calculada a partir da ordem das cifras e extensões do ClientHello. É o que permite reconhecer o binário mesmo trocando IP e domínio |
+| `established` | `T` | O handshake completou |
+
+</details>
+
 
 O mesmo POST aparece assim num FortiGate (formato chave=valor):
 
 ```
 date=2026-09-03 time=14:22:11 devname="FGT-CORP-01" type="traffic" subtype="forward" srcip=10.10.5.31 srcport=51234 dstip=203.0.113.77 dstport=80 proto=6 action="accept" policyid=17 service="HTTP" sentbyte=1284 rcvdbyte=310 app="HTTP.BROWSER" user="maria.costa"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:22:11` | Hora local do equipamento |
+| `devname` | `"FGT-CORP-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.5.31` | IP de origem |
+| `srcport` | `51234` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `203.0.113.77` | IP de destino |
+| `dstport` | `80` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `17` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"HTTP"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sentbyte` | `1284` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `310` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `app` | `"HTTP.BROWSER"` | Aplicação identificada pelo controle de aplicação, por inspeção do conteúdo |
+| `user` | `"maria.costa"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+
+</details>
 
 E numa consulta de caça no Splunk (SPL) e no Sentinel (KQL):
 
@@ -437,6 +515,35 @@ tcp.flags.reset == 1
 FUTURE_USE,2026/09/03 09:14:22,001801012345,TRAFFIC,end,2560,2026/09/03 09:14:22,10.10.20.57,10.10.20.15,0.0.0.0,0.0.0.0,rule-lan-lan,,,incomplete,vsys1,LAN,LAN,ethernet1/2,ethernet1/3,LogFwd,2026/09/03 09:14:22,0,1,51422,445,0,0,0x19,tcp,allow,74,74,0,1,0,not-applicable
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1 | — | `FUTURE_USE` | Reservado pelo fabricante. Aqui o exemplo escreve o nome do campo em vez de um valor |
+| 2 / 7 | Receive / Generated Time | `2026/09/03 09:14:22` | Quando o firewall recebeu e quando ocorreu |
+| 3 | Serial Number | `001801012345` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 6 | — | `2560` | Reservado pelo fabricante |
+| 8 / 9 | Source / Destination Address | `10.10.20.57` / `10.10.20.15` | **Origem e destino na mesma sub-rede**: é tráfego interno |
+| 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | Sem NAT, como se espera em tráfego lado a lado |
+| 12 | Rule Name | `rule-lan-lan` | A regra que trata tráfego LAN para LAN |
+| 13 / 14 | Source / Destination User | `-` / `-` | Sem usuário resolvido |
+| 15 | Application | `incomplete` | **O campo mais importante deste exemplo.** `incomplete` significa que o handshake TCP **nunca completou**, logo o App-ID não teve conteúdo para identificar. É a assinatura de varredura ou de host que não respondeu |
+| 16 | Virtual System | `vsys1` | Firewall virtual |
+| 17 / 18 | Source / Destination Zone | `LAN` / `LAN` | Mesma zona nos dois lados |
+| 19 / 20 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/3` | Interfaces de entrada e saída |
+| 21 / 22 | Log Action / — | `LogFwd` / `2026/09/03 09:14:22` | Perfil de log e campo reservado |
+| 23 | Session ID | `0` | **Zero: não houve sessão estabelecida** para receber um identificador |
+| 24 | Repeat Count | `1` | Contagem de repetições |
+| 25 / 26 | Source / Destination Port | `51422` / `445` | Porta efêmera e **SMB** |
+| 27 / 28 | NAT Source / Destination Port | `0` / `0` | Sem tradução |
+| 29 / 30 / 31 | Flags / Protocol / Action | `0x19` / `tcp` / `allow` | Bits, protocolo e veredito. **`allow` engana**: a política permitiu, mas nada se estabeleceu |
+| 32 / 33 / 34 | Bytes / Sent / Received | `74` / `74` / `0` | **74 bytes num sentido e zero no outro** — é o tamanho de um único SYN sem resposta |
+| 35 | Packets | `1` | **Um pacote.** Confirma: só a sonda saiu |
+| 36 / 37 | Start Time / Elapsed | `0` / `not-applicable` | Sem início e sem duração, porque não houve sessão |
+
+</details>
+
 Campos: origem `10.10.20.57`, destino `10.10.20.15`, aplicação `incomplete` (o handshake nunca fechou), porta destino `445`, apenas 1 pacote e 74 bytes. Centenas de linhas `incomplete` do mesmo IP em segundos = varredura. Técnica MITRE: **T1046 — Network Service Discovery**.
 
 **Normal vs suspeito:** scanner de vulnerabilidade autorizado também gera isso — por isso o N1 sempre confere se o IP de origem está na lista de scanners aprovados antes de escalar.
@@ -462,11 +569,27 @@ Statistics > I/O Graph  (intervalo 1 seg, filtro ip.dst == 203.0.113.45)
 **Como aparece nos logs (Zeek `conn.log`):**
 
 ```
-ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	conn_state
-1756891200.114	CqL1a2	10.10.20.88	49711	203.0.113.45	443	tcp	ssl	0.412	512	1460	SF
-1756891260.121	CqL1a3	10.10.20.88	49712	203.0.113.45	443	tcp	ssl	0.408	512	1460	SF
-1756891320.118	CqL1a4	10.10.20.88	49713	203.0.113.45	443	tcp	ssl	0.415	512	1460	SF
+ts              uid     id.orig_h    id.orig_p  id.resp_h     id.resp_p  proto  service  duration  orig_bytes  resp_bytes  conn_state
+1756891200.114  CqL1a2  10.10.20.88  49711      203.0.113.45  443        tcp    ssl      0.412     512         1460        SF
+1756891260.121  CqL1a3  10.10.20.88  49712      203.0.113.45  443        tcp    ssl      0.408     512         1460        SF
+1756891320.118  CqL1a4  10.10.20.88  49713      203.0.113.45  443        tcp    ssl      0.415     512         1460        SF
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas três linhas | O que significa |
+|---|---|---|
+| `ts` | `1756891200.114`, `1756891260.121`, `1756891320.118` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. **Exatamente 60 segundos de intervalo** — o batimento |
+| `uid` | `CqL1a2`, `CqL1a3`, `CqL1a4` | Três conexões distintas, cada uma com seu identificador |
+| `id.orig_h` / `id.orig_p` | `10.10.20.88` / `49711`, `49712`, `49713` | Sempre a mesma estação; a porta efêmera avança de uma em uma, como acontece em conexões consecutivas do mesmo processo |
+| `id.resp_h` / `id.resp_p` | `203.0.113.45` / `443` | Sempre o mesmo destino externo, em HTTPS |
+| `proto` / `service` | `tcp` / `ssl` | Transporte e serviço identificado |
+| `duration` | `0.412`, `0.408`, `0.415` | Duração quase idêntica — máquina, não pessoa |
+| `orig_bytes` | `512` nas três | Payload enviado **sempre igual**: é o mesmo pedido a repetir |
+| `resp_bytes` | `1460` nas três | Payload devolvido, também constante: resposta programada |
+| `conn_state` | `SF` | Todas normais. **Nenhum campo isolado acusa nada** — é a regularidade entre as linhas que denuncia |
+
+</details>
 
 Os `ts` diferem exatamente 60 segundos; `orig_bytes` é sempre 512. Isso é beaconing — **T1071.001 (Application Layer Protocol: Web)**.
 
@@ -492,10 +615,22 @@ Statistics > DNS  (contagem por tipo de registro)
 **Como aparece nos logs (Zeek `dns.log`):**
 
 ```
-ts	id.orig_h	query	qtype_name	rcode_name
-1756891402.7	10.10.20.88	a7f3b91c8e2d4a6f0b5c.tun.empresa-exemplo.com.br	TXT	NOERROR
-1756891403.1	10.10.20.88	c2e8d40a91b7f3c65a1e.tun.empresa-exemplo.com.br	TXT	NOERROR
+ts            id.orig_h    query                                            qtype_name  rcode_name
+1756891402.7  10.10.20.88  a7f3b91c8e2d4a6f0b5c.tun.empresa-exemplo.com.br  TXT         NOERROR
+1756891403.1  10.10.20.88  c2e8d40a91b7f3c65a1e.tun.empresa-exemplo.com.br  TXT         NOERROR
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756891402.7` / `1756891403.1` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. Duas consultas separadas por **0,4 segundo** |
+| `id.orig_h` | `10.10.20.88` | A mesma estação do exemplo anterior — o `conn.log` e o `dns.log` estão contando o mesmo incidente |
+| `query` | `a7f3b91c8e2d4a6f0b5c.tun.empresa-exemplo.com.br` | O nome consultado. **O subdomínio de 20 caracteres é o dado**, codificado; o domínio-pai (`tun.…`) é o servidor controlado pelo atacante |
+| `qtype_name` | `TXT` | Registro de texto livre — cabe muito mais informação que um `A`, e por isso é o tipo preferido para tunelamento |
+| `rcode_name` | `NOERROR` | Resolveu: o domínio existe e está respondendo |
+
+</details>
 
 **Consulta SPL (Splunk) para caçar em escala:**
 
@@ -532,6 +667,23 @@ Depois: clique com o botão direito no pacote > **Follow > TCP Stream**.
 %ASA-6-302013: Built outbound TCP connection 84512 for outside:203.0.113.77/21 (203.0.113.77/21) to inside:10.10.20.41/50122 (198.51.100.9/50122)
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `84512` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.77/21` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.77/21)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.20.41/50122` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(198.51.100.9/50122)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | **Porta 21 é FTP em texto claro, a sair para a Internet.** Esta linha é só a conexão de **controle**: a transferência em si abre outra conexão, e sem capturar as duas não se sabe o que foi movido |
+
+</details>
+
 Conexão de saída na porta 21 (FTP) — o N1 deve questionar por que uma estação usa FTP para a internet.
 
 **Erro comum de júnior:** achar que "é só laboratório". A lição real é: qualquer porta 21, 23 ou 80 com autenticação é um achado a reportar. Nunca copie a senha capturada para o ticket.
@@ -556,6 +708,18 @@ smb2.filename contains "ADMIN$" || smb2.filename contains "IPC$"
 EventID 4624  Logon Type 3  Account Name: svc_backup  Source Network Address: 10.10.20.88  Workstation: WKS-FIN-07
 EventID 4672  Special privileges assigned to new logon  Account Name: svc_backup
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` / `4672  Special privileges assigned to new logon` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Account Name` | `svc_backup` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Source Network Address` | `10.10.20.88` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Workstation` | `WKS-FIN-07` | Nome declarado pela máquina de origem |
+
+</details>
 
 Logon Type 3 = logon de rede. Uma conta de serviço fazendo Type 3 em dez servidores diferentes em 5 minutos é **T1021.002 (SMB/Admin Shares)**.
 
@@ -587,9 +751,22 @@ tls.handshake.type == 11         (Certificate)
 **Como aparece nos logs (Zeek `ssl.log`):**
 
 ```
-ts	id.orig_h	id.resp_h	server_name	validation_status	ja3
-1756891500.2	10.10.20.88	203.0.113.45	-	self signed certificate in certificate chain	e7d705a3286e19ea42f587b344ee6865
+ts            id.orig_h    id.resp_h     server_name  validation_status                             ja3
+1756891500.2  10.10.20.88  203.0.113.45  -            self signed certificate in certificate chain  e7d705a3286e19ea42f587b344ee6865
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756891500.2` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `id.orig_h` | `10.10.20.88` | A mesma estação dos dois exemplos anteriores |
+| `id.resp_h` | `203.0.113.45` | O destino externo |
+| `server_name` | `-` | O SNI está **vazio**: o cliente conectou direto pelo IP, sem pedir nome nenhum. Navegador não faz isso; implante faz |
+| `validation_status` | `self signed certificate in certificate chain` | A cadeia do certificado não chega a nenhuma CA confiável — há um autoassinado no meio |
+| `ja3` | `e7d705a3286e19ea42f587b344ee6865` | Impressão digital do cliente TLS. Guarde este valor: procurá-lo na frota revela as outras máquinas com o mesmo binário |
+
+</details>
 
 `server_name` vazio (`-`) e `validation_status` de autoassinado = escalar. **T1573 (Encrypted Channel)**.
 

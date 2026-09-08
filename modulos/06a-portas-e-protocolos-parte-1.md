@@ -78,6 +78,23 @@ DestinationIp: 203.0.113.44 DestinationPort: 443
 DestinationHostname: cdn.empresa-exemplo.com.br
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `3` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `3` = Sysmon **Network Connect** |
+| `UtcTime` | `2026-09-03 14:22:41.118` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Users\jsilva\AppData\Local\Temp\update.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `SourceIp` | `10.10.20.55` | IP de origem da conexão |
+| `SourcePort` | `51122` | Porta de origem |
+| `DestinationIp` | `203.0.113.44` | IP de destino da conexão |
+| `DestinationPort` | `443` | Porta de destino |
+| `DestinationHostname` | `cdn.empresa-exemplo.com.br` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
+
 O que o SOC N1 observa: processo em `\Temp\` abrindo conexão de saída é anômalo; `chrome.exe` fazendo o mesmo é rotina.
 
 ## Protocolos porta a porta
@@ -93,7 +110,21 @@ O que o SOC N1 observa: processo em `\Temp\` abrindo conexão de saída é anôm
 1756909361 CkTf9x2yLm3q   10.10.30.18  50122      198.51.100.60 21        svc_backup RETR   /dados/clientes_2026.csv 226
 ```
 
-Campos: `id.orig_h` origem, `id.resp_h` destino, `user` credencial usada, `command` a ação (`RETR` = download, `STOR` = upload), `reply_code 226` = transferência concluída com sucesso.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756909361` | Instante do comando em epoch Unix (aqui sem a fração de segundo) |
+| `uid` | `CkTf9x2yLm3q` | Conexão de controle do FTP — cruza com o `conn.log`. **A transferência em si sai por outra conexão**, na porta de dados |
+| `id.orig_h` / `id.orig_p` | `10.10.30.18` / `50122` | Quem iniciou: um servidor interno |
+| `id.resp_h` / `id.resp_p` | `198.51.100.60` / `21` | Destino **externo** na porta 21 — FTP saindo da rede |
+| `user` | `svc_backup` | Credencial usada. FTP é em texto claro: **esta conta e a senha atravessaram a rede legíveis** |
+| `command` | `RETR` | A ação: `RETR` baixa do servidor, `STOR` envia, `LIST` lista, `DELE` apaga |
+| `arg` | `/dados/clientes_2026.csv` | O alvo do comando — o nome do arquivo já diz o tamanho do problema |
+| `reply_code` | `226` | Código de resposta do FTP. `226` = transferência concluída com sucesso; `530` seria autenticação recusada e `550` acesso negado |
+
+</details>
+
 
 - **Riscos:** credenciais em texto claro capturáveis por sniffer; servidor com login anônimo habilitado; canal ideal para **exfiltração** de dados em massa (MITRE ATT&CK T1048 — Exfiltration Over Alternative Protocol).
 - **Alertas comuns de SOC:** FTP saindo para IP público não catalogado; volume de upload muito acima da linha de base; `USER anonymous`; dezenas de `reply_code 530` (falha de login) indicando força bruta.
@@ -125,7 +156,23 @@ Leitura: duas linhas `Failed password` do mesmo IP externo em segundos = tentati
 %ASA-6-302013: Built inbound TCP connection 88213 for outside:203.0.113.15/49820 (203.0.113.15/49820) to inside:10.10.60.31/23 (10.10.60.31/23)
 ```
 
-`302013` = conexão TCP construída; `inbound` = veio de fora; destino porta 23 numa máquina interna. Isso é achado de incidente, não de rotina.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `inbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88213` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.15/49820` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.15/49820)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.60.31/23` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(10.10.60.31/23)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | **Porta 23 é Telnet, em texto claro, e a conexão veio de fora.** Sem NAT em nenhuma ponta, o host interno está publicado diretamente. É achado de auditoria antes de ser incidente |
+
+</details>
+
 
 - **Riscos:** captura trivial de credenciais; o worm **Mirai** construiu uma botnet gigantesca justamente varrendo a porta 23 com senhas padrão de fábrica.
 - **Alertas comuns de SOC:** qualquer conexão Telnet aceita; varredura da porta 23 vinda de um host interno (indica máquina comprometida procurando IoT vulnerável).
@@ -139,6 +186,28 @@ Leitura: duas linhas `Failed password` do mesmo IP externo em segundos = tentati
 ```
 date=2026-09-03 time=11:02:47 devname="FGT-CORP-01" type="traffic" subtype="forward" srcip=10.10.44.90 srcport=51204 dstip=198.51.100.25 dstport=25 proto=6 action="accept" sentbyte=48211900 rcvdbyte=9120 app="SMTP" policyid=14
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `11:02:47` | Hora local do equipamento |
+| `devname` | `"FGT-CORP-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.44.90` | IP de origem |
+| `srcport` | `51204` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `198.51.100.25` | IP de destino |
+| `dstport` | `25` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `sentbyte` | `48211900` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `9120` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `app` | `"SMTP"` | Aplicação identificada pelo controle de aplicação, por inspeção do conteúdo |
+| `policyid` | `14` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+
+</details>
 
 `proto=6` é TCP; `sentbyte=48211900` são ~48 MB enviados por uma estação comum via SMTP direto — comportamento típico de exfiltração ou de máquina infectada enviando spam.
 
@@ -248,6 +317,34 @@ DeviceNetworkEvents
 date=2026-09-03 time=03:12:41 devname="FGT-CORE-01" devid="FG100E0000000001" logid="0000000013" type="traffic" subtype="forward" level="notice" srcip=10.10.20.45 srcport=51422 dstip=10.10.5.10 dstport=110 proto=6 action="accept" policyid=17 service="POP3" sentbyte=2140 rcvdbyte=418992 duration=96 app="POP3" user="jsilva"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `03:12:41` | Hora local do equipamento |
+| `devname` | `"FGT-CORE-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100E0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0000000013"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"notice"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.45` | IP de origem |
+| `srcport` | `51422` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `10.10.5.10` | IP de destino |
+| `dstport` | `110` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `17` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"POP3"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sentbyte` | `2140` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `418992` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `duration` | `96` | Duração da sessão em **segundos** |
+| `app` | `"POP3"` | Aplicação identificada pelo controle de aplicação, por inspeção do conteúdo |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+
+</details>
+
 Campos: `srcip/srcport` = origem; `dstip/dstport` = destino (110 = POP3); `proto=6` = TCP; `rcvdbyte` alto = muito dado descendo (caixa inteira sendo baixada); `action=accept` = a política 17 permitiu.
 
 **Riscos.** Credencial em texto claro (captura passiva na rede); exfiltração de caixa postal inteira; uso como canal de comando e controle rudimentar.
@@ -286,6 +383,20 @@ Service Name:      krbtgt/CORP.LOCAL
 Client Address:    ::ffff:10.10.7.30
 Failure Code:      0x25
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Event ID` | `4771` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4771` = **pré-autenticação** Kerberos falhou |
+| `Log Name` | `Security` | Qual registro guarda o evento: `Security` é o de auditoria, `System` o do sistema, `Microsoft-Windows-Sysmon/Operational` o do Sysmon |
+| `Source` | `Microsoft-Windows-Security-Auditing` | Provedor que gerou o evento |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:10.10.7.30` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Failure Code` | `0x25` | **Código de falha do Kerberos.** `0x25` = **relógio fora de sincronia** entre cliente e DC (o Kerberos tolera poucos minutos) |
+
+</details>
 
 `Failure Code 0x25` = **KDC_ERR_SKEW**: diferença de relógio entre cliente e KDC (Key Distribution Center, o serviço do controlador de domínio que emite tickets). Não é ataque — é NTP quebrado.
 
@@ -384,6 +495,24 @@ Trio legado do Windows, ainda vivo em muitas redes.
 1788451331.402  CmT9p1aQ4  10.10.20.45  49711  10.10.20.99  445  tcp  smb  1.221  1840  980  SF
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (NetBIOS) / 2ª linha (SMB) | O que significa |
+|---|---|---|
+| `ts` | `1788451331.117` / `1788451331.402` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos — as duas ações distam **285 milissegundos**, o que exclui ação humana |
+| `uid` | `CqR2k3xE1` / `CmT9p1aQ4` | Duas conexões distintas, logo dois `uid` |
+| `id.orig_h` | `10.10.20.45` | A mesma estação nas duas: é ela a vítima |
+| `id.orig_p` | `137` / `49711` | Porta de origem. Na 1ª é **137, e não uma porta efêmera** — o NetBIOS name service fala de 137 para 137 |
+| `id.resp_h` | `10.10.20.99` | Quem respondeu: outra **estação**, não um servidor. É o ponto central do achado |
+| `id.resp_p` | `137` / `445` | Destino: primeiro resolução de nome NetBIOS, depois SMB |
+| `proto` | `udp` / `tcp` | NetBIOS name service sobre UDP; SMB sobre TCP |
+| `service` | `dns` / `smb` | O Zeek rotula o NetBIOS name service como `dns` porque o formato da mensagem é o mesmo — não se assuste com o rótulo |
+| `duration` | `0.004` / `1.221` | Duração em segundos |
+| `orig_bytes` / `resp_bytes` | `50`/`62` e `1840`/`980` | Payload em cada direção |
+| `conn_state` | `SF` | As duas completaram. **É isso que torna o caso grave**: a autenticação SMB contra a máquina errada teve sucesso |
+
+</details>
+
 Leitura: a estação `.45` perguntou um nome NetBIOS, quem respondeu foi `.99` (uma estação, não um servidor) e logo em seguida a `.45` autenticou SMB contra a `.99`. Esse encadeamento em segundos é a marca do poisoning.
 
 **Riscos.** Roubo de hash NTLM, relay para outros servidores, escalonamento até conta administrativa.
@@ -410,7 +539,23 @@ Leitura: a estação `.45` perguntou um nome NetBIOS, quem respondeu foi `.99` (
 %ASA-6-302013: Built inbound TCP connection 884512 for outside:203.0.113.90/49330 (203.0.113.90/49330) to inside:10.10.5.10/143 (198.51.100.20/143)
 ```
 
-`%ASA-6-302013` = conexão TCP estabelecida; `outside` = interface externa; destino `10.10.5.10/143` = servidor de e-mail interno na porta IMAP. Conexão IMAP em claro vinda da Internet merece investigação.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `inbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `884512` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.90/49330` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.90/49330)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.5.10/143` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(198.51.100.20/143)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | **Porta 143 é IMAP sem TLS** (a versão cifrada é a 993), exposta à Internet através de NAT: `10.10.5.10` é publicado como `198.51.100.20`. Credenciais de correio a atravessar a rede em claro |
+
+</details>
+
 
 **Alertas comuns de SOC.** "Legacy auth IMAP sign-in", "IMAP brute force", "impossible travel em cliente IMAP".
 

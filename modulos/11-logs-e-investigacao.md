@@ -147,6 +147,8 @@ Exemplo: `authpriv` (10) com severidade `Warning` (4) → `(10 × 8) + 4 = 84`, 
 <86>1 2026-09-03T14:22:07.451Z fw-borda-01.corp.local FortiGate 5412 ID47215 [origin ip="10.10.5.1"] Deny outbound to 203.0.113.45:4444 user=jsilva
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Parte | Valor | O que significa |
 |---|---|---|
 | `<86>` | PRI | facility 10 (authpriv) × 8 + severidade 6 (info) |
@@ -158,6 +160,8 @@ Exemplo: `authpriv` (10) com severidade `Warning` (4) → `(10 × 8) + 4 = 84`, 
 | `ID47215` | MSGID | Tipo de mensagem |
 | `[origin ip="10.10.5.1"]` | STRUCTURED-DATA | Pares chave=valor já estruturados |
 | `Deny outbound to ...` | MSG | Texto livre |
+
+</details>
 
 ### Transporte
 
@@ -187,7 +191,27 @@ Sep  3 14:22:07 asa-dmz-01 %ASA-6-302013: Built outbound TCP connection 88214 fo
 Sep  3 14:22:09 srv-linux-04 sshd[2214]: Failed password for invalid user admin from 10.10.20.55 port 44120 ssh2
 ```
 
-Campos do `%ASA-6-302013`: `%ASA` = produto, `6` = severidade informational, `302013` = ID da mensagem (conexão TCP estabelecida). Depois: interface e IP de destino (`outside:203.0.113.45/4444`), interface e IP de origem (`inside:10.10.20.55/51022`) e o IP traduzido por NAT (`198.51.100.7`).
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| *(cabeçalho syslog)* | `Sep  3 14:22:07 asa-dmz-01` | **Não faz parte da mensagem do ASA** — é o que o syslog acrescenta à frente: data, hora e nome do equipamento |
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88214` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.45/4444` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.45/4444)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.20.55/51022` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(198.51.100.7/51022)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | **Porta de destino 4444** é o padrão de várias ferramentas de shell reverso |
+| *(2ª linha, outra fonte)* | `srv-linux-04 sshd[2214]` | **Não é ASA** — é o `sshd` de um servidor Linux. Traz o nome do host, o processo e o seu PID entre parênteses retos |
+| `Failed password for invalid user admin` | `admin` | Tentativa de SSH com uma conta que **não existe** naquele servidor: quem tenta não sabe quais contas há |
+| `from 10.10.20.55 port 44120` | `10.10.20.55` | **O mesmo host da 1ª linha**, agora a atacar para dentro. Duas fontes, dois segundos de intervalo: é a correlação que faz o caso, não cada linha sozinha |
+
+</details>
+
 
 **O que o SOC N1 observa:** saída para a porta **4444** é clássico de shell reverso; combinada, 2 segundos depois, com tentativa de SSH interna a partir do mesmo host, indica movimentação lateral (MITRE ATT&CK **T1021.004**).
 
@@ -220,6 +244,21 @@ Syslog
 <86>1 2026-09-03T02:14:33.010Z fw-borda-01.corp.local FortiGate 4110 ID20 [origin ip="10.10.5.1"] action=deny srcip=10.10.30.71 dstip=203.0.113.45 dstport=4444 service=tcp/4444 user=svc_backup
 Sep  3 02:14:35 srv-app-02 sshd[8891]: Accepted password for svc_backup from 10.10.30.71 port 40122 ssh2
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ip` | `"10.10.5.1"` | Endereço envolvido no evento |
+| `action` | `deny` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `srcip` | `10.10.30.71` | IP de origem |
+| `dstip` | `203.0.113.45` | IP de destino |
+| `dstport` | `4444` | Porta de destino — é ela que aponta o serviço |
+| `service` | `tcp/4444` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `user` | `svc_backup` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| — | — | Repare que o campo se chama `ip` e não `srcip`: **em logs de evento o FortiOS usa nomes diferentes dos de tráfego**, e uma consulta escrita para um não encontra o outro |
+
+</details>
 
 4. Um analista propõe passar todo o syslog da matriz para UDP 514 "porque é mais rápido e não trava". Cite dois riscos concretos dessa decisão para a investigação.
 5. Explique, em uma frase para o gestor, por que um servidor sem NTP sincronizado inutiliza uma regra de correlação de 5 minutos.
@@ -306,6 +345,8 @@ Todo evento do Windows é, por baixo, um XML. Ver o XML uma vez ensina mais do q
 
 Lendo campo a campo:
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado |
 |---|---|
 | **Provider** | Quem publicou. Aqui, a auditoria de segurança do Windows |
@@ -316,6 +357,8 @@ Lendo campo a campo:
 | **TimeCreated** | Hora em **UTC**. Fuso errado destrói uma timeline |
 | **EventRecordID** | Número sequencial. Salto grande = log pode ter sido limpo |
 | **EventData** | O conteúdo específico do EventID |
+
+</details>
 
 No exemplo: `SubStatus 0xc000006a` = senha errada (a conta existe). `LogonType 3` = logon de rede (compartilhamento, SMB na porta **445**). Origem `10.10.40.55` tentando `admin.rodrigo`.
 
@@ -378,6 +421,22 @@ ParentImage: C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE
 ParentCommandLine: "WINWORD.EXE" /n "C:\Users\jsilva\Downloads\fatura.docm"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `1` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `1` = Sysmon **Process Create** |
+| `UtcTime` | `2026-09-03 14:31:02.118` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `ProcessGuid` | `{a1b2c3d4-1111-6650-1c00-000000000900}` | Identificador **único e global** do processo. Ao contrário do PID, não é reciclado — é ele que liga os eventos do mesmo processo |
+| `Image` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `CommandLine` | `powershell.exe -nop -w hidden -enc SQBFAFgA...` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `Hashes` | `SHA256=9F914D42706FE215501044ACD85A32D58AAEF1419D404FDDFA5D3B48F66CCD9F` | Resumos criptográficos do executável — servem para procurar o mesmo binário na frota |
+| `ParentImage` | `C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE` | Caminho do processo **pai**. **É aqui que o Sysmon brilha**: Word ou Excel como pai de `powershell.exe` é sinal forte por si só |
+| `ParentCommandLine` | `"WINWORD.EXE" /n "C:\Users\jsilva\Downloads\fatura.docm"` | Linha de comando do processo pai |
+
+</details>
+
 ```
 EventID: 3
 UtcTime: 2026-09-03 14:31:04.902
@@ -390,6 +449,22 @@ DestinationPort: 443
 DestinationHostname: cdn-update.example.com
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `3` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `3` = Sysmon **Network Connect** |
+| `UtcTime` | `2026-09-03 14:31:04.902` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `SourceIp` | `10.10.40.55` | IP de origem da conexão |
+| `DestinationIp` | `203.0.113.77` | IP de destino da conexão |
+| `DestinationPort` | `443` | Porta de destino |
+| `DestinationHostname` | `cdn-update.example.com` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
+
 ```
 EventID: 22
 UtcTime: 2026-09-03 14:31:04.410
@@ -397,6 +472,18 @@ Image: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
 QueryName: cdn-update.example.com
 QueryResults: type: 5 203.0.113.77;
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `22` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `22` = Sysmon **DNS Query** |
+| `UtcTime` | `2026-09-03 14:31:04.410` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `QueryName` | `cdn-update.example.com` | O nome consultado no DNS |
+| `QueryResults` | `type: 5 203.0.113.77` | O que o DNS respondeu |
+
+</details>
 
 **O que o SOC N1 observa:** Word como processo pai do PowerShell é anormal em qualquer empresa. `-nop -w hidden -enc` (sem perfil, janela escondida, comando codificado) é padrão de execução escondida. Junte 1 + 22 + 3 e você tem a história: macro no documento → PowerShell → resolveu domínio → conectou em IP externo.
 
@@ -478,6 +565,33 @@ Já vimos por que o log existe e como ele viaja até o SIEM, e já vimos o mundo
 1,2026/09/03 14:22:07,001801099999,TRAFFIC,end,2561,2026/09/03 14:22:07,10.10.20.55,203.0.113.44,0.0.0.0,0.0.0.0,Regra-Saida-Internet,corp\jsilva,,ssl,vsys1,Trust,Untrust,ethernet1/2,ethernet1/1,Log-Forward,2026/09/03 14:22:07,84213,1,51422,443,0,0,0x400053,tcp,allow,148920,4210,144710,182,2026/09/03 14:18:31,216
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1, 6 | — | `1`, `2561` | Reservados pelo fabricante |
+| 2 / 7 | Receive / Generated Time | `2026/09/03 14:22:07` | Quando o firewall recebeu e quando ocorreu |
+| 3 | Serial Number | `001801099999` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 8 / 9 | Source / Destination Address | `10.10.20.55` / `203.0.113.44` | Origem interna e destino externo |
+| 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | `0.0.0.0` significa **"não houve NAT"**, não o endereço zero |
+| 12 | Rule Name | `Regra-Saida-Internet` | A regra que permitiu |
+| 13 / 14 | Source / Destination User | `corp\jsilva` / *(vazio)* | Usuário resolvido pelo User-ID |
+| 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
+| 17 / 18 | Source / Destination Zone | `Trust` / `Untrust` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/1` | Interfaces de entrada e saída |
+| 21 / 22 | Log Action / — | `Log-Forward` / `2026/09/03 14:22:07` | Perfil de log e campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `84213` / `1` | Sessão e contagem |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | Porta efêmera e HTTPS |
+| 27 / 28 | NAT Source / Destination Port | `0` / `0` | Zero: sem tradução |
+| 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits, protocolo e veredito |
+| 32 | Bytes | `148920` | Total: 149 KB — **o mesmo tamanho do download que o proxy registrou**, e é assim que se cruzam as duas fontes |
+| 33 / 34 | Bytes Sent / Received | `4210` / `144710` | Volume em cada direção |
+| 35 | Packets | `182` | Total de pacotes |
+| 36 / 37 | Start Time / Elapsed | `2026/09/03 14:18:31` / `216` | Início e duração em segundos. **Repare: a sessão começou às 14:18 e o log só saiu às 14:22** — é por isso que se procura pelo *Start Time*, não pelo horário do registro |
+
+</details>
+
 Lendo os campos que importam: `TRAFFIC` (tipo), origem `10.10.20.55`, destino `203.0.113.44`, regra `Regra-Saida-Internet`, usuário `corp\jsilva`, aplicação `ssl`, zonas `Trust → Untrust`, portas `51422 → 443`, protocolo `tcp`, ação `allow`, bytes totais `148920`, bytes enviados `4210`, bytes recebidos `144710`, duração `216` segundos.
 
 **Como aparece nos logs (FortiGate, key=value):**
@@ -486,11 +600,53 @@ Lendo os campos que importam: `TRAFFIC` (tipo), origem `10.10.20.55`, destino `2
 date=2026-09-03 time=14:31:02 devname="FGT-BR-01" type="traffic" subtype="forward" srcip=10.10.20.55 srcport=52880 dstip=198.51.100.77 dstport=445 proto=6 action="deny" policyid=12 srcintf="port3" dstintf="port1" service="SMB" sentbyte=0 rcvdbyte=0 user="jsilva" msg="Bloqueado por politica"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:31:02` | Hora local do equipamento |
+| `devname` | `"FGT-BR-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.20.55` | IP de origem |
+| `srcport` | `52880` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `198.51.100.77` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `srcintf` | `"port3"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstintf` | `"port1"` | Interface por onde o tráfego **saiu** |
+| `service` | `"SMB"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sentbyte` | `0` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `0` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `msg` | `"Bloqueado por politica"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
+
 **Como aparece nos logs (Cisco ASA):**
 
 ```
 %ASA-6-302013: Built outbound TCP connection 88213 for outside:203.0.113.44/443 (203.0.113.44/443) to inside:10.10.20.55/51422 (192.0.2.10/51422)
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88213` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.44/443` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.44/443)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.20.55/51422` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(192.0.2.10/51422)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+
+</details>
 
 **O que o SOC N1 observa.** Normal: estação interna falando 443/TCP com destinos conhecidos, bytes recebidos maiores que enviados. Suspeito: `deny` repetido para a porta 445 saindo para a internet (T1021.002), muitos destinos diferentes na mesma porta em poucos segundos (varredura, T1046), ou sessão com bytes **enviados** muito maiores que os recebidos (possível exfiltração, T1041).
 
@@ -519,11 +675,47 @@ date=2026-09-03 time=14:31:02 devname="FGT-BR-01" type="traffic" subtype="forwar
 1756908672.431   1842 10.10.20.55 TCP_MISS/200 148920 GET http://cdn.example.com/atualiza.exe jsilva DIRECT/203.0.113.44 application/octet-stream
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| *timestamp* | `1756908672.431` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| duração | `1842` | 1,8 segundo para atender |
+| cliente | `10.10.20.55` | A estação que baixou |
+| resultado/status | `TCP_MISS/200` | Buscou na origem e recebeu 200 OK — **o download aconteceu** |
+| bytes | `148920` | 149 KB entregues ao cliente |
+| método | `GET` | Pedido de leitura |
+| URL | `http://cdn.example.com/atualiza.exe` | **HTTP em claro entregando um `.exe`** — nome de arquivo em português a fingir atualização |
+| usuário | `jsilva` | A conta autenticada: já se sabe a pessoa, não só a máquina |
+| hierarquia/destino | `DIRECT/203.0.113.44` | O IP de onde veio o binário — é o que se cruza com o firewall |
+| tipo de conteúdo | `application/octet-stream` | MIME de binário genérico |
+
+</details>
+
 **Netskope (evento de tráfego web):**
 
 ```
 timestamp=2026-09-03T14:44:11Z user=maria.costa@empresa-exemplo.com.br srcip=10.10.31.22 url=hxxps://arquivos.example.com/upload category="Cloud Storage" http_method=POST response_code=200 useragent="python-requests/2.31.0" req_bytes=734512890 resp_bytes=1204 referer="-" action=allow
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `timestamp` | `2026-09-03T14:44:11Z` | Instante do evento conforme a plataforma que o gerou |
+| `user` | `maria.costa@empresa-exemplo.com.br` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `srcip` | `10.10.31.22` | IP de origem |
+| `url` | `hxxps://arquivos.example.com/upload` | URL pedida |
+| `category` | `"Cloud Storage"` | Categoria atribuída ao destino |
+| `http_method` | `POST` | Método HTTP do pedido |
+| `response_code` | `200` | Código de resposta HTTP |
+| `useragent` | `"python-requests/2.31.0"` | *User-agent* declarado pelo cliente |
+| `req_bytes` | `734512890` | Bytes do pedido |
+| `resp_bytes` | `1204` | Bytes da resposta |
+| `referer` | `"-"` | Página que originou o pedido |
+| `action` | `allow` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+
+</details>
 
 **Zscaler NSS:**
 
@@ -668,6 +860,23 @@ Imagine um roubo em um prédio. O ladrão deixa para trás: uma digital no vidro
  <Data Name="DestinationPort">443</Data>
 </EventData></Event>
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `<Event>` `<System>` `<EventData>` | — | **O esqueleto do EVTX em XML.** O Windows guarda o evento assim; o que o visualizador mostra em duas colunas é esta árvore já formatada |
+| `<EventID>` | `3` | **Sysmon Network Connect** — uma conexão de rede feita por um processo |
+| `<Data Name="…">` | *(o padrão)* | **Aqui está a armadilha**: cada campo é um elemento `Data` cujo **atributo** `Name` diz o nome do campo, e o valor fica no conteúdo. Por isso um `grep "Image="` **não encontra nada** neste formato — o que existe é `Name="Image"` |
+| `UtcTime` | `2026-09-03 14:02:11.884` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Users\jsilva\AppData\Local\Temp\fatura.exe` | O programa que abriu a conexão. **Executável a correr de `AppData\Local\Temp` já é achado por si só**: pasta de escrita livre, onde anexo baixado acaba |
+| `User` | `CORP\jsilva` | A conta sob a qual o processo corre — quem, não só qual máquina |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `SourceIp` | `10.10.24.57` | A máquina de origem |
+| `DestinationIp` | `203.0.113.45` | O destino externo |
+| `DestinationPort` | `443` | Porta de destino. **HTTPS não prova nada de bom**: é a porta que quase ninguém bloqueia, e por isso a preferida de canal de comando e controle |
+
+</details>
 
 Campos: `Image` é o programa que abriu a conexão (rodando de `Temp` — já é ruim); `User` é a conta; `SourceIp` a máquina interna; `DestinationIp`/`DestinationPort` o destino externo.
 
@@ -879,6 +1088,28 @@ type=traffic subtype=start srcip=10.10.30.12 srcport=51044 dstip=203.0.113.90
 dstport=443 action=accept app=SSL user="svc_backup" duration=0
 policyid=17 devname="FGT-CORP-01" date=2026-09-03 time=03:14:22
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `type` | `traffic` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `start` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.30.12` | IP de origem |
+| `srcport` | `51044` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `203.0.113.90` | IP de destino |
+| `dstport` | `443` | Porta de destino — é ela que aponta o serviço |
+| `action` | `accept` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `app` | `SSL` | Aplicação identificada pelo controle de aplicação, por inspeção do conteúdo |
+| `user` | `"svc_backup"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `duration` | `0` | Duração da sessão em **segundos** |
+| `policyid` | `17` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `devname` | `"FGT-CORP-01"` | Nome do equipamento que gerou o log |
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `03:14:22` | Hora local do equipamento |
+
+</details>
+
 Contexto: `svc_backup` só deve falar com `10.20.0.0/16`; `203.0.113.90` tem 0/72 no VirusTotal.
 3. O alerta indica que `admin.rodrigo` fez logon 4624 LogonType 3 em `DC-CORP-01` às 02:47 UTC de domingo. Qual o próximo passo da investigação e quais dois campos você olha primeiro?
 4. Classifique cada item pelo nível da Pirâmide da Dor: (a) `192.0.2.77`; (b) uso de PsExec para execução remota; (c) User-Agent `Mozilla/4.0 (compatible; Updater)`; (d) `d41d8cd98f00b204e9800998ecf8427e`.

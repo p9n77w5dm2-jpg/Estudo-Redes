@@ -88,11 +88,31 @@ Cenário: o usuário `jsilva`, na máquina `10.10.20.15`, abre `www.example.com`
 Zeek `dns.log` (um dos formatos mais usados em SOC):
 
 ```
-#fields ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	trans_id	query	qtype_name	rcode_name	AA	RD	RA	TTLs	answers
-1756900412.113	CwXy1a2Bc3D	10.10.20.15	51422	10.10.10.5	53	udp	43119	www.example.com	A	NOERROR	F	T	T	3600.0	203.0.113.45
+#fields ts      uid          id.orig_h    id.orig_p  id.resp_h   id.resp_p  proto  trans_id  query            qtype_name  rcode_name  AA  RD  RA  TTLs    answers
+1756900412.113  CwXy1a2Bc3D  10.10.20.15  51422      10.10.10.5  53         udp    43119     www.example.com  A           NOERROR     F   T   T   3600.0  203.0.113.45
 ```
 
-Campos que importam: `id.orig_h` = quem perguntou (a máquina do jsilva); `id.resp_h` = para qual resolver; `query` = o nome pedido; `qtype_name` = tipo de registro (A = endereço IPv4); `rcode_name` = resultado (NOERROR = achou; NXDOMAIN = domínio não existe); `AA` = resposta autoritativa; `RD`/`RA` = recursão desejada/disponível; `TTLs` = validade em segundos; `answers` = a resposta.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756900412.113` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CwXy1a2Bc3D` | Identificador único da conexão — cruza com o `conn.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.20.15` / `51422` | Quem perguntou: a estação e a porta efêmera de onde saiu a consulta |
+| `id.resp_h` / `id.resp_p` | `10.10.10.5` / `53` | Qual resolvedor respondeu, na porta 53 |
+| `proto` | `udp` | DNS usa UDP por padrão; TCP entra quando a resposta não cabe em um datagrama |
+| `trans_id` | `43119` | Número que casa a pergunta com a resposta. **Valor previsível abre porta a envenenamento de cache** |
+| `query` | `www.example.com` | O nome consultado — o campo mais usado em caça |
+| `qtype_name` | `A` | Tipo de registro pedido: `A` endereço IPv4, `AAAA` IPv6, `TXT` texto livre, `MX` correio, `SRV` serviço |
+| `rcode_name` | `NOERROR` | Resultado. `NXDOMAIN` = o nome não existe; em rajada é indício de DGA |
+| `AA` | `F` | *Authoritative Answer* — se quem respondeu é a autoridade do domínio ou só repassou do cache |
+| `RD` | `T` | *Recursion Desired* — o cliente pediu ao resolvedor que fosse buscar a resposta |
+| `RA` | `T` | *Recursion Available* — o servidor aceita fazer recursão. Um resolvedor exposto à Internet com `RA=T` é risco de amplificação |
+| `TTLs` | `3600.0` | Tempo de vida da resposta em cache, em segundos. TTL muito baixo (30–60 s) é típico de infraestrutura descartável |
+| `answers` | `203.0.113.45` | O que o servidor devolveu |
+
+</details>
+
 
 Windows/Sysmon Event ID 22 (DNS query), o melhor amigo do N1 porque traz o **processo** que perguntou:
 
@@ -105,6 +125,20 @@ QueryStatus: 0
 QueryResults: type:  5 cdn-update-edge.example.com;::ffff:203.0.113.77;
 User: CORP\jsilva
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `22` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `22` = Sysmon **DNS Query** |
+| `UtcTime` | `2026-09-03 14:33:32.113` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Users\jsilva\AppData\Local\Temp\atualizador.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `QueryName` | `cdn-update.example.com` | O nome consultado no DNS |
+| `QueryStatus` | `0` | Código de resultado da consulta (`0` é sucesso) |
+| `QueryResults` | `type:  5 cdn-update-edge.example.com;::ffff:203.0.113.77` | O que o DNS respondeu |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+
+</details>
 
 `Image` é o executável que fez a consulta, `QueryStatus: 0` significa sucesso, `QueryResults` traz a cadeia de respostas.
 
@@ -174,6 +208,35 @@ dns.flags.truncated == 1
 ```
 date=2026-09-03 time=14:41:07 devname="FGT-CORP-01" devid="FG100F0000000001" logid="0000000013" type="traffic" subtype="forward" level="notice" srcip=10.10.20.15 srcport=49877 srcintf="port3" dstip=203.0.113.53 dstport=853 dstintf="wan1" proto=6 action="accept" policyid=12 service="tcp/853" sentbyte=4210 rcvdbyte=9880 app="DNS.over.TLS" user="jsilva"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:41:07` | Hora local do equipamento |
+| `devname` | `"FGT-CORP-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0000000013"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"notice"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.15` | IP de origem |
+| `srcport` | `49877` | Porta de origem, efêmera e sorteada pelo cliente |
+| `srcintf` | `"port3"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstip` | `203.0.113.53` | IP de destino |
+| `dstport` | `853` | Porta de destino — é ela que aponta o serviço |
+| `dstintf` | `"wan1"` | Interface por onde o tráfego **saiu** |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"tcp/853"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sentbyte` | `4210` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `9880` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `app` | `"DNS.over.TLS"` | Aplicação identificada pelo controle de aplicação, por inspeção do conteúdo |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+
+</details>
 
 `srcip` = endpoint interno, `dstport=853` + `proto=6` (TCP) = DoT, `action="accept"` mostra que a política **permitiu** — este é o achado.
 
@@ -279,7 +342,23 @@ dig www.empresa-exemplo.com.br AAAA
 1725360014.902  CzP4b7  10.10.20.55  10.10.0.53  udp  cdn-update.example.com        AAAA       NXDOMAIN   -              -
 ```
 
-`id.orig_h` é quem perguntou (a estação), `id.resp_h` é o servidor DNS interno, `qtype_name` é o tipo perguntado, `rcode_name` é o resultado (`NOERROR` deu certo, `NXDOMAIN` significa domínio inexistente) e `answers` é a resposta.
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (normal) / 2ª linha (falha) | O que significa |
+|---|---|---|
+| `ts` | `1725360012.441` / `1725360014.902` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CxT9a1` / `CzP4b7` | Identificador único da conexão |
+| `id.orig_h` | `10.10.20.55` | Quem perguntou: a estação |
+| `id.resp_h` | `10.10.0.53` | O servidor DNS **interno** — é o que se espera; um resolvedor público aqui é fuga de política |
+| `proto` | `udp` | Transporte da consulta |
+| `query` | `www.empresa-exemplo.com.br` / `cdn-update.example.com` | O nome consultado |
+| `qtype_name` | `A` / `AAAA` | Tipo de registro: endereço IPv4 e IPv6 |
+| `rcode_name` | `NOERROR` / `NXDOMAIN` | `NOERROR` resolveu; `NXDOMAIN` significa que o nome não existe |
+| `answers` | `203.0.113.10` / `-` | A resposta. Vazia (`-`) quando não houve resolução |
+| `TTLs` | `3600` / `-` | Validade em cache, em segundos |
+
+</details>
+
 
 **O que o SOC N1 observa:** normal é uma estação resolver dezenas de nomes conhecidos por hora. Suspeito é o mesmo host gerando centenas de `NXDOMAIN` por minuto — sinal clássico de DGA (Domain Generation Algorithm, algoritmo gerador de domínios), técnica MITRE **T1568.002**.
 
@@ -575,7 +654,23 @@ Um lembrete importante: quase todo ataque aqui é detectado nos logs de resoluç
 1725372011.209 CJ8xk1  10.10.20.55  10.10.10.5  udp   portal.empresa-exemplo.com.br      A          NOERROR    198.51.100.77  30
 ```
 
-Campos: `ts` é o horário; `uid` identifica a conexão; `id.orig_h` é quem perguntou; `id.resp_h` é o resolvedor; `query` é o nome consultado; `answers` é a resposta; `TTL` (Time To Live) é quanto tempo a resposta pode ficar em cache.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1725372011.204` e `1725372011.209` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. **Repare nos 5 milissegundos de diferença** entre as duas linhas |
+| `uid` | `CJ8xk1` | O **mesmo** identificador nas duas linhas: é uma única consulta com duas respostas — o coração do problema |
+| `id.orig_h` | `10.10.20.55` | Quem perguntou |
+| `id.resp_h` | `10.10.10.5` | O resolvedor consultado |
+| `proto` | `udp` | DNS sobre UDP não tem sessão: qualquer um que chegue primeiro com o `trans_id` certo é aceito |
+| `query` | `portal.empresa-exemplo.com.br` | O nome consultado, idêntico nas duas |
+| `qtype_name` | `A` | Registro de endereço IPv4 |
+| `rcode_name` | `NOERROR` | As duas respostas dizem "resolvi com sucesso" |
+| `answers` | `203.0.113.20` / `198.51.100.77` | **Dois IPs diferentes para o mesmo nome.** A segunda resposta é a forjada |
+| `TTL` | `3600` / `30` | Validade em cache. O TTL curto da resposta falsa é deliberado: o atacante quer que o cliente volte a perguntar logo, para reenvenenar |
+
+</details>
+
 
 **O que o N1 observa.** Normal: uma resposta por consulta, TTL coerente com o domínio. Suspeito: **duas respostas** para o mesmo `uid`, TTL absurdamente baixo (30 segundos num domínio que sempre usa 3600) e um IP de resposta que nunca apareceu no histórico daquele domínio.
 
@@ -592,6 +687,28 @@ Campos: `ts` é o horário; `uid` identifica a conexão; `id.orig_h` é quem per
 ```
 date=2026-09-03 time=09:12:44 devname="FGT-FILIAL-01" type="traffic" subtype="forward" srcip=10.10.30.61 srcport=51422 dstip=198.51.100.44 dstport=53 proto=17 action="accept" service="DNS" sentbyte=78 rcvdbyte=142 policyid=12
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:12:44` | Hora local do equipamento |
+| `devname` | `"FGT-FILIAL-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.30.61` | IP de origem |
+| `srcport` | `51422` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `198.51.100.44` | IP de destino |
+| `dstport` | `53` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `17` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `service` | `"DNS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sentbyte` | `78` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `142` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+
+</details>
 
 Campos: `srcip` é a estação; `dstip` é para onde ela mandou DNS; `proto=17` é UDP; `dstport=53` é DNS.
 
@@ -614,6 +731,18 @@ ts=1725375600.117 id.orig_h=10.10.20.88 query=k3j9fq0zx1mn4bvc7lp2ad8s.tunel.exa
 ts=1725375600.402 id.orig_h=10.10.20.88 query=p0w8e7r5t4y3u2i1o9a8s7d6.tunel.example.com qtype_name=TXT rcode_name=NOERROR
 ts=1725375600.688 id.orig_h=10.10.20.88 query=zq2xw3ce4vr5bt6ny7mu8il9.tunel.example.com qtype_name=NULL rcode_name=NOERROR
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1725375600.117`, `.402`, `.688` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. Três consultas em menos de 600 ms do mesmo cliente |
+| `id.orig_h` | `10.10.20.88` | Sempre a mesma estação — é ela que carrega o túnel |
+| `query` | `k3j9fq0zx1mn4bvc7lp2ad8s.tunel.example.com` | O nome consultado. **O subdomínio é o dado**: 24 caracteres de lixo aparente que na verdade são o payload codificado, e o domínio-pai (`tunel.example.com`) é o servidor do atacante |
+| `qtype_name` | `TXT`, `TXT`, `NULL` | `TXT` carrega texto livre e `NULL` dados arbitrários — os dois tipos preferidos para tunelamento, porque cabem muito mais bytes que um `A` |
+| `rcode_name` | `NOERROR` | Todas resolveram: o domínio existe e o servidor do atacante está respondendo |
+
+</details>
 
 **Limiares práticos.** Use estes números como ponto de partida e ajuste ao seu ambiente:
 
@@ -683,6 +812,21 @@ Sinal para o N1: mais de 10 endereços A distintos para o mesmo nome em uma hora
 %ASA-4-733100: [ Scanning ] drop rate-1 exceeded. Current burst rate is 3200 per second, max configured rate is 100
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `4` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `4` é **warning**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `733100` | Limiar de detecção de varredura excedido. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| `[ Scanning ]` | `Scanning` | **Qual detector disparou.** O ASA tem vários (`Scanning`, `Bad Pkts`, `Firewall`, `ICMP`); este conta hosts e portas distintos por origem |
+| `drop rate-1 exceeded` | `rate-1` | O ASA mantém **vários intervalos de média** (`rate-1`, `rate-2`...) com limiares próprios. `rate-1` é o mais curto — é ele que pega rajadas |
+| `Current burst rate` | `3200 per second` | A taxa medida no momento |
+| `max configured rate` | `100` | O limiar configurado. **3200 contra 100: 32 vezes acima** |
+| — | — | Esta mensagem diz que o *limiar* foi cruzado, **não quem foi**. Para achar a origem é preciso o `show threat-detection` ou os logs de conexão do mesmo intervalo |
+
+</details>
+
 **O que o N1 observa.** Tráfego UDP/53 de **entrada** vindo da internet para um servidor interno, respostas muito maiores que perguntas e um único IP alvo repetido. Falso positivo: pico legítimo em campanha de marketing ou lançamento.
 
 ### Typosquatting, homoglifos, punycode e NRD
@@ -709,6 +853,22 @@ Sinal para o N1: mais de 10 endereços A distintos para o mesmo nome em uma hora
 ts=1725379000.10 id.orig_h=10.10.20.55 id.resp_h=10.10.10.5 query=intranet.corp.local qtype_name=A rcode_name=NOERROR answers=10.10.15.40 TTL=3600
 ts=1725379200.44 id.orig_h=10.10.20.55 id.resp_h=198.51.100.44 query=intranet.corp.local qtype_name=A rcode_name=NOERROR answers=198.51.100.90 TTL=60
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha / 2ª linha | O que significa |
+|---|---|---|
+| `ts` | `1725379000.10` / `1725379200.44` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos — as duas consultas distam pouco mais de 3 minutos |
+| `id.orig_h` | `10.10.20.55` | A mesma estação nas duas |
+| `id.resp_h` | `10.10.10.5` / `198.51.100.44` | **O resolvedor mudou**: primeiro o DNS interno, depois um servidor externo |
+| `query` | `intranet.corp.local` | O mesmo nome interno nas duas — e `.corp.local` não deveria ser perguntado fora |
+| `qtype_name` | `A` | Registro de endereço |
+| `rcode_name` | `NOERROR` | As duas responderam com sucesso, o que é o mais grave da segunda |
+| `answers` | `10.10.15.40` / `198.51.100.90` | A resposta interna é privada; a externa aponta para um IP público |
+| `TTL` | `3600` / `60` | Validade em cache; o TTL curto na segunda é padrão de infraestrutura efêmera |
+
+</details>
+
 3. Alerta: "Possível DGA — host 10.10.40.12 com 640 NXDOMAIN na última hora". Investigando, os nomes são `srv-financeiro.corp.local.corp.local` e similares. Verdadeiro ou falso positivo? Justifique.
 4. Uma consulta DNS de 60 bytes gerou resposta de 3.000 bytes. Qual o fator de amplificação e qual é o próximo passo do N1?
 5. O SIEM mostra 30 estações conectando ao IP 10.10.99.9 na porta 80. Esse IP é o sinkhole corporativo. Qual é o próximo passo?
@@ -769,6 +929,8 @@ aatbxq7v3k9zplmn.example.com  C_INTERNET  TXT  NOERROR  F  T  T
 "v=1;ZGF0YQ==" 60  F
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado | Uso no SOC |
 |---|---|---|
 | `ts` | Data/hora em epoch | Montar a linha do tempo |
@@ -781,6 +943,8 @@ aatbxq7v3k9zplmn.example.com  C_INTERNET  TXT  NOERROR  F  T  T
 | `answers` | Resposta devolvida | IP suspeito ou dado codificado |
 | `TTLs` | Tempo de vida do registro em segundos | TTL muito baixo = fast flux |
 | `rejected` | Se a consulta foi rejeitada | Contexto |
+
+</details>
 
 #### Sysmon EventID 22 (DNS query)
 
@@ -805,6 +969,29 @@ date=2026-09-03 time=14:20:13 devname="FGT-CORP-01" type="traffic" subtype="forw
 srcip=10.10.24.87 srcport=53412 dstip=203.0.113.45 dstport=53 proto=17
 service="DNS" action="accept" policyid=12 sentbyte=94 rcvdbyte=210 duration=2
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:20:13` | Hora local do equipamento |
+| `devname` | `"FGT-CORP-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.24.87` | IP de origem |
+| `srcport` | `53412` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `203.0.113.45` | IP de destino |
+| `dstport` | `53` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `17` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `service` | `"DNS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `sentbyte` | `94` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `210` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `duration` | `2` | Duração da sessão em **segundos** |
+
+</details>
 
 ```
 1,2026/09/03 14:20:13,013201004215,THREAT,spyware,2562,2026/09/03 14:20:13,

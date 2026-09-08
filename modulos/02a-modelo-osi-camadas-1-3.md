@@ -70,9 +70,24 @@ Mnemônica de baixo para cima (1 → 7): **F**ernando **E**ntrou **R**apidamente
 1757000412.512  CxT9a12Bk8   10.10.20.35  51422  10.10.50.10  443  tcp  ssl  12.804  1420  38210  SF
 ```
 
-- `id.orig_h` / `id.resp_h`: IPs de origem e destino (camada 3).
-- `id.resp_p`: porta de destino, 443 = HTTPS (camada 4).
-- `conn_state SF`: conexão abriu e fechou normalmente. `S0` (nenhuma resposta) e `REJ` (recusada) são os estados que interessam em varredura.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1757000412.512` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CxT9a12Bk8` | Identificador único desta conexão. **É a chave da investigação**: o mesmo `uid` reaparece em `ssl.log`, `dns.log`, `http.log` e `files.log`, o que permite remontar a sessão inteira |
+| `id.orig_h` | `10.10.20.35` | IP de origem — **camada 3** |
+| `id.orig_p` | `51422` | Porta de origem, efêmera — **camada 4** |
+| `id.resp_h` | `10.10.50.10` | IP de destino — **camada 3** |
+| `id.resp_p` | `443` | Porta de destino: HTTPS — **camada 4** |
+| `proto` | `tcp` | Protocolo de transporte |
+| `service` | `ssl` | Serviço reconhecido pelo Zeek ao inspecionar o conteúdo: TLS, e não HTTP em claro |
+| `duration` | `12.804` | Duração em segundos |
+| `orig_bytes` | `1420` | Payload enviado pelo cliente (sem cabeçalhos) |
+| `resp_bytes` | `38210` | Payload devolvido pelo servidor — proporção normal de navegação |
+| `conn_state` | `SF` | Abriu com handshake completo e fechou com FIN. `S0` (resposta nenhuma) e `REJ` (recusada) são os estados que interessam em varredura |
+
+</details>
 
 **Erro comum de analista júnior.** Concluir "é HTTPS, então é seguro". A porta 443 diz apenas qual porta foi usada — malware usa 443 justamente porque quase ninguém bloqueia.
 
@@ -165,6 +180,18 @@ EventID=4688 SubjectUserName=jsilva NewProcessName=C:\Windows\System32\cmd.exe
 CreatorProcessName=C:\Windows\explorer.exe CommandLine="cmd.exe /q"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4688` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4688` = **criação de processo** |
+| `SubjectUserName` | `jsilva` | A conta que pediu a ação |
+| `NewProcessName` | `C:\Windows\System32\cmd.exe` | Caminho do processo criado |
+| `CreatorProcessName` | `C:\Windows\explorer.exe` | Caminho do processo pai |
+| `CommandLine` | `"cmd.exe /q"` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+
+</details>
+
 O par "dispositivo HID novo" + 4688 fora do padrão do usuário é o indicador de USB rogue.
 
 ### Ferramentas e monitoramento
@@ -174,6 +201,22 @@ Zabbix e LibreNMS coletam via SNMP (Simple Network Management Protocol) os conta
 ```
 <134>1 2026-09-03T09:22:59.000Z zabbix-srv-01 zabbix - - [meta] Problem: Interface Gi1/0/14 on sw-core-01: Link down (severity: Warning, value: 2)
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `<134>` | PRI | `134 = 16 x 8 + 6`: facility 16 (local0), severidade 6 (informational) |
+| `1` | VERSION | Formato RFC 5424 |
+| `2026-09-03T09:22:59.000Z` | TIMESTAMP | ISO 8601 em UTC. Repare nos milissegundos zerados: o Zabbix agrega por segundo |
+| `zabbix-srv-01` | HOSTNAME | **Quem enviou a mensagem é o servidor de monitorização, não o switch** — o switch é o *assunto*, não a origem |
+| `zabbix` | APP-NAME | A aplicação que emitiu |
+| `-` `-` | PROCID e MSGID | Vazios |
+| `[meta]` | STRUCTURED-DATA | Presente mas sem pares: o Zabbix marca o bloco e não o preenche |
+| `Problem: Interface Gi1/0/14 on sw-core-01: Link down` | MSG | O texto do alerta: qual interface, em qual equipamento, e o quê |
+| `severity: Warning, value: 2` | MSG (fim) | **A severidade do Zabbix, que não é a do syslog.** São duas escalas diferentes na mesma linha — confundi-las é erro comum ao montar regras |
+
+</details>
 
 ````spl
 index=network sourcetype=cisco:ios ("LINK-3-UPDOWN" OR "LINEPROTO-5-UPDOWN")
@@ -292,11 +335,27 @@ Ferramentas ofensivas comuns nesse território: **Responder**, **Impacket** (`nt
 Zeek gera um *notice* quando um mesmo IP aparece com MACs diferentes ou quando há inconsistência ARP (script `detect-arp-spoofing` / módulo ARP):
 
 ```
-#fields ts	uid	note	msg	sub	src	dst	p	peer_descr	actions
-1756890123.442	CH3f7a2Kx9	ARP::Cache_Inconsistency	IP 10.10.20.1 mapped to multiple MACs: 00:1a:2b:3c:4d:5e, 00:0c:29:aa:bb:cc	gateway impersonation suspected	10.10.20.87	10.10.20.1	-	worker-1	Notice::ACTION_LOG
+#fields ts      uid         note                      msg                                                                          sub                              src          dst         p  peer_descr  actions
+1756890123.442  CH3f7a2Kx9  ARP::Cache_Inconsistency  IP 10.10.20.1 mapped to multiple MACs: 00:1a:2b:3c:4d:5e, 00:0c:29:aa:bb:cc  gateway impersonation suspected  10.10.20.87  10.10.20.1  -  worker-1    Notice::ACTION_LOG
 ```
 
-Campos: `ts` = epoch do evento; `note` = tipo de notice; `msg` = descrição; `src` = quem emitiu o ARP suspeito (`10.10.20.87`); `dst` = IP sendo falsificado (o gateway `10.10.20.1`).
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756890123.442` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CH3f7a2Kx9` | Conexão que originou o notice, quando existe uma — permite voltar ao `conn.log` |
+| `note` | `ARP::Cache_Inconsistency` | Tipo do notice. **É por este campo que se escreve a regra no SIEM**, não pelo texto da mensagem |
+| `msg` | `IP 10.10.20.1 mapped to multiple MACs: ...` | Descrição legível; aqui lista os dois MAC que reivindicam o mesmo IP |
+| `sub` | `gateway impersonation suspected` | Sub-mensagem, com o contexto que o script conseguiu juntar |
+| `src` | `10.10.20.87` | Quem emitiu o ARP suspeito — o provável atacante |
+| `dst` | `10.10.20.1` | IP que está sendo falsificado: o gateway |
+| `p` | `-` | Porta envolvida. Vazia porque ARP não tem portas — vive na camada 2 |
+| `peer_descr` | `worker-1` | Qual processo do cluster Zeek gerou o notice; útil quando há vários sensores |
+| `actions` | `Notice::ACTION_LOG` | O que o Zeek fez com o notice: apenas registrou. Outras políticas enviam e-mail (`ACTION_EMAIL`) ou alarmam |
+
+</details>
+
 
 Suricata, com regra de ARP spoofing habilitada, produz EVE JSON:
 
@@ -313,6 +372,25 @@ Falha de 802.1X no switch Cisco, via syslog:
 <174>1 2026-09-03T09:20:41.912Z sw-acesso-03.corp.local AUTHMGR - - - %AUTHMGR-5-SECURITY_VIOLATION: Security violation on the interface Gi1/0/24, new MAC address (0050.5687.19af) is seen
 <174>1 2026-09-03T09:20:42.004Z sw-acesso-03.corp.local PM - - - %PM-4-ERR_DISABLE: psecure-violation error detected on Gi1/0/24, putting Gi1/0/24 in err-disable state
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `<174>` | PRI | `174 = 21 x 8 + 6`: **facility 21 (local5)**, severidade 6 (informational) |
+| `1` | VERSION | Formato RFC 5424 |
+| `2026-09-03T09:20:41.907Z` | TIMESTAMP | ISO 8601 em UTC. **As três mensagens cabem em 97 milissegundos** — é a proteção a reagir, não um humano |
+| `sw-acesso-03.corp.local` | HOSTNAME | O switch de acesso que gerou tudo |
+| `DOT1X`, `AUTHMGR`, `PM` | APP-NAME | O subsistema do IOS que falou: autenticação 802.1X, gestor de autenticação e *port manager* |
+| `-` `-` `-` | PROCID, MSGID, STRUCTURED-DATA | Vazios: o IOS não os preenche |
+| `%DOT1X-5-FAIL` | MSG · etiqueta Cisco | **A etiqueta tem três partes: `%FACILITY-SEVERIDADE-MNEMÓNICA`.** Aqui: subsistema `DOT1X`, severidade `5` (notification), mnemónica `FAIL`. É a mnemónica que se usa na regra do SIEM, porque o texto muda entre versões |
+| `%AUTHMGR-5-SECURITY_VIOLATION` | MSG · etiqueta Cisco | Segunda mensagem: o port security viu um MAC que não esperava |
+| `%PM-4-ERR_DISABLE` | MSG · etiqueta Cisco | Terceira: severidade **4 (warning)**, mais grave que as anteriores. `ERR_DISABLE` significa que **a porta foi desligada administrativamente** |
+| `(0050.5687.19af)` | MSG · MAC | O MAC do cliente, na notação Cisco de três grupos de quatro dígitos (`aabb.ccdd.eeff`) |
+| `Interface Gi1/0/24` | MSG · porta | A porta física — é o que se leva ao time local para ver o que está ligado ali |
+| `AuditSessionID 0A0A1401000000AB` | MSG · sessão | Identificador da tentativa de autenticação; **liga as três mensagens à mesma sessão** |
+
+</details>
 
 Leitura: o cliente com MAC `0050.5687.19af` falhou no 802.1X na porta `Gi1/0/24`; o **port security** viu um MAC novo e a porta foi para `err-disable` (desligada administrativamente). Isso é a proteção funcionando.
 
@@ -473,6 +551,37 @@ Log do FortiGate no formato chave=valor:
 date=2026-09-03 time=10:42:17 devname="FGT-BORDA-01" devid="FG100F0000000001" logid="0000000013" type="traffic" subtype="forward" level="warning" srcip=10.10.20.45 srcport=51422 srcintf="port2" dstip=198.51.100.77 dstport=445 dstintf="port1" policyid=0 sessionid=884213 proto=6 action="deny" policytype="policy" service="SMB" msg="no matching policy" gatewayip=10.10.20.1 gatewayport=1
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `10:42:17` | Hora local do equipamento |
+| `devname` | `"FGT-BORDA-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0000000013"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"warning"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.45` | IP de origem |
+| `srcport` | `51422` | Porta de origem, efêmera e sorteada pelo cliente |
+| `srcintf` | `"port2"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstip` | `198.51.100.77` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `dstintf` | `"port1"` | Interface por onde o tráfego **saiu** |
+| `policyid` | `0` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `sessionid` | `884213` | Identificador da sessão na tabela de estado — casa o início e o fim da mesma conexão |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policytype` | `"policy"` | Tipo de política: `policy` é a que atravessa o firewall, `local-in-policy` protege o próprio aparelho |
+| `service` | `"SMB"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `msg` | `"no matching policy"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+| `gatewayip` | `10.10.20.1` | Próximo salto escolhido pela tabela de rotas |
+| `gatewayport` | `1` | Interface do próximo salto |
+| — | — | `policyid=0` com `msg="no matching policy"` significa que **nenhuma regra escrita casou** — caiu na negação implícita do fim da lista. O `gatewayip` mostra a decisão de roteamento que já tinha sido tomada |
+
+</details>
+
 Campos que importam: `srcip`/`dstip` (quem para quem), `dstport=445` (SMB saindo para a Internet — nunca deve acontecer), `proto=6` (TCP), `srcintf`/`dstintf` (entrou pela LAN e tentou sair pela WAN — decisão de roteamento), `action=deny` com `policyid=0` e `msg="no matching policy"` (caiu na regra implícita de negação), `gatewayip` (o próximo salto escolhido pela tabela de rotas).
 
 Log do Cisco ASA negando por rota inválida:
@@ -481,6 +590,22 @@ Log do Cisco ASA negando por rota inválida:
 %ASA-4-106023: Deny tcp src inside:10.10.20.45/51422 dst outside:198.51.100.77/445 by access-group "inside_access_in"
 %ASA-4-313005: No matching connection for ICMP error message: icmp src outside:203.0.113.9 dst inside:10.10.20.45 (type 11, code 0)
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `4` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `4` é **warning**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `106023` | Pacote negado por lista de acesso. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| `src` | `inside:10.10.20.45/51422` | Interface, IP e porta de **origem**. Aqui a interface é o nome que o ASA dá à zona, e é ela que dá o sentido do tráfego |
+| `dst` | `outside:198.51.100.77/445` | Interface, IP e porta de **destino** |
+| `by access-group` | ``"inside_access_in"`` | **A lista de acesso que negou**, e a interface onde está aplicada. Sem este campo não se sabe qual regra corrigir |
+| *message ID* (2ª linha) | `313005` | **Mensagem ICMP sem conexão correspondente.** O ASA é *stateful*: recebeu uma resposta de erro ICMP para uma sessão que não existe na sua tabela |
+| `icmp src` / `dst` | `outside:203.0.113.9` / `inside:10.10.20.45` | Quem enviou o erro e a quem se destinava |
+| `(type 11, code 0)` | `11` / `0` | **Tipo 11 é *Time Exceeded*** (o TTL zerou) e código 0 é em trânsito. É a resposta normal a um `traceroute` — ou um pacote forjado |
+
+</details>
 
 A segunda linha é um ICMP Time Exceeded chegando sem sessão correspondente — típico de resposta a traceroute ou de pacote forjado.
 
@@ -544,6 +669,27 @@ Linha 2 limita a 24 horas. Linha 3 procura os binários que alteram rotas. Linha
 ```
 date=2026-09-03 time=02:14:55 devname="FGT-BORDA-01" type="traffic" subtype="forward" srcip=10.10.30.77 dstip=192.0.2.44 proto=1 action="accept" sentbyte=48211900 rcvdbyte=1204 duration=21600 service="PING"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `02:14:55` | Hora local do equipamento |
+| `devname` | `"FGT-BORDA-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.30.77` | IP de origem |
+| `dstip` | `192.0.2.44` | IP de destino |
+| `proto` | `1` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `sentbyte` | `48211900` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `1204` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `duration` | `21600` | Duração da sessão em **segundos** |
+| `service` | `"PING"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+
+</details>
+
 3. Um usuário reclama que não acessa a intranet `10.10.50.20`. O `ping 10.10.50.20` falha, mas o `ping 10.10.20.1` (gateway) responde. Qual é o próximo passo da investigação?
 4. Você recebe um alerta de abuso de um provedor externo dizendo que `203.0.113.10` fez varredura na Internet às 09:12. Esse é o IP público de saída da sua empresa. Qual é o próximo passo?
 5. Em uma estação de `maria.costa` aparece a rota `172.16.9.0 255.255.255.0 10.10.20.99`. Verdadeiro ou falso positivo?

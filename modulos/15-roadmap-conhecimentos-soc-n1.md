@@ -62,6 +62,24 @@ Source Network Address: 10.10.24.51
 Source Port: 49877
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Log Name` | `Security` | Qual registro guarda o evento: `Security` é o de auditoria, `System` o do sistema, `Microsoft-Windows-Sysmon/Operational` o do Sysmon |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Reason` | `Unknown user name or bad password` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Workstation Name` | `NB-VENDAS-07` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.24.51` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `49877` | Porta de origem, efêmera |
+
+</details>
+
 Leitura dos campos: `4625` é falha de logon; `Logon Type: 3` é logon de rede (acesso a compartilhamento, autenticação SMB), não é alguém digitando no teclado da máquina; `Sub Status 0xC000006A` significa **senha errada com usuário existente** (se fosse `0xC0000064` seria usuário inexistente); `Source Network Address` é de onde partiu a tentativa.
 
 **O que o N1 observa:** três falhas seguidas de `jsilva` na estação dele às 9h da manhã é troca de senha recente — normal. Duzentas falhas em 90 segundos, com `Sub Status 0xC0000064` variando nomes de usuário, partindo de 10.10.24.51, é enumeração de contas (MITRE ATT&CK T1110.003, password spraying) — suspeito.
@@ -166,6 +184,25 @@ Legenda de prioridade: 🟢 **Essencial** (sem isso você não passa no período
 ```
 2026-09-03 02:14:07,TRAFFIC,end,10.10.24.51,203.0.113.44,45312,443,tcp,ssl,DMZ-Out,allow,842,138204,197,"Trust","Untrust","corp\jsilva"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | Receive Time | `2026-09-03 02:14:07` | **02h14 da manhã** — fora de horário |
+| 2 / 3 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 4 / 5 | Source / Destination Address | `10.10.24.51` / `203.0.113.44` | Origem interna e destino externo |
+| 6 / 7 | Source / Destination Port | `45312` / `443` | Porta efêmera e HTTPS |
+| 8 / 9 | Protocol / Application | `tcp` / `ssl` | Protocolo e App-ID |
+| 10 | Log Action | `DMZ-Out` | Perfil de encaminhamento de log |
+| 11 | Action | `allow` | O veredito da política |
+| 12 / 13 | Bytes Sent / Received | `842` / `138204` | **842 bytes a subir e 138 KB a descer** — proporção de download, não de exfiltração |
+| 14 | Packets | `197` | Total de pacotes |
+| 15 / 16 | Source / Destination Zone | `"Trust"` / `"Untrust"` | As zonas. **Vêm entre aspas neste recorte**, e as aspas não fazem parte do valor |
+| 17 | Source User | `"corp\jsilva"` | Usuário resolvido, também entre aspas |
+| — | — | — | **Recorte de 17 campos**, com ordem própria; o formato completo tem mais de 46 |
+
+</details>
 
 3. **Verdadeiro ou falso positivo?** Chega o alerta: "Múltiplas falhas de autenticação". No log, 187 eventos 4625 em 4 minutos, `Sub Status 0xC0000064`, 187 nomes de usuário diferentes, todos vindos de 10.10.60.12, `Logon Type: 3`. Falso positivo ou verdadeiro positivo? Qual técnica MITRE?
 
@@ -310,7 +347,22 @@ ts                   uid        id.orig_h    id.orig_p id.resp_h      id.resp_p 
 2026-09-03T10:02:03Z CxT9a3     10.10.24.57  49890     203.0.113.90   443       tcp   ssl     0.421    512        1112       SF
 ```
 
-Campos: `ts` é o horário; `id.orig_h` a origem interna; `id.resp_h` o destino; `orig_bytes`/`resp_bytes` o volume em cada direção; `conn_state SF` significa conexão TCP completa e encerrada normalmente. **Normal:** navegação humana tem intervalos irregulares e volumes variados. **Suspeito:** aqui há uma conexão a cada ~60 segundos, sempre com 512 bytes de subida — assinatura de canal de comando e controle (T1071.001).
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas três linhas | O que significa |
+|---|---|---|
+| `ts` | `10:00:03`, `10:01:04`, `10:02:03` | Instante do evento (ISO 8601, UTC). **Cerca de 60 segundos entre cada** |
+| `uid` | `CxT9a1`, `CxT9a2`, `CxT9a3` | Três conexões distintas |
+| `id.orig_h` / `id.orig_p` | `10.10.24.57` / `49871`, `49883`, `49890` | Sempre a mesma origem interna; portas efêmeras diferentes |
+| `id.resp_h` / `id.resp_p` | `203.0.113.90` / `443` | Sempre o mesmo destino externo, em HTTPS |
+| `proto` / `service` | `tcp` / `ssl` | Transporte e serviço identificado |
+| `duration` | `0.412`, `0.398`, `0.421` | Duração curta e quase igual |
+| `orig_bytes` | `512` nas três | Payload enviado constante |
+| `resp_bytes` | `1104`, `1104`, `1112` | Payload devolvido quase constante |
+| `conn_state` | `SF` | Todas completaram. O achado está na **repetição**, não em nenhum campo isolado |
+
+</details>
+
 
 ```spl
 index=zeek sourcetype=zeek:conn dest_ip=203.0.113.90
@@ -458,11 +510,56 @@ Regra prática: **Security+ abre a porta, TryHackMe/LetsDefend te fazem passar n
 Sep 03 14:22:11 fw01 1,2026/09/03 14:22:11,014201007777,TRAFFIC,end,2562,2026/09/03 14:22:11,10.10.24.57,203.0.113.44,192.0.2.10,203.0.113.44,regra-saida-internet,jsilva,,ssl,vsys1,Interna,Externa,ae1.24,ae1.10,Log-Forward,2026/09/03 14:22:11,88421,1,52344,443,17233,443,0x400053,tcp,allow,824512,4210,820302,1842,2026/09/03 13:50:02,1928,any,0,7734512,0x0,10.10.24.0-10.10.24.255,US,0,1690,152
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1 | *(cabeçalho syslog)* | `Sep 03 14:22:11 fw01` | **Não é campo do CSV** — cabeçalho do syslog. O `1` no fim é o primeiro campo reservado |
+| 2 / 7 | Receive / Generated Time | `2026/09/03 14:22:11` | Quando o firewall recebeu e quando ocorreu |
+| 3 | Serial Number | `014201007777` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 6, 39, 44 | — | `2562`, `0`, `0` | Reservados pelo fabricante |
+| 8 / 9 | Source / Destination Address | `10.10.24.57` / `203.0.113.44` | Origem interna e destino externo |
+| 10 / 11 | NAT Source / Destination IP | `192.0.2.10` / `203.0.113.44` | Endereço público de saída e destino |
+| 12 | Rule Name | `regra-saida-internet` | A regra que permitiu |
+| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
+| 17 / 18 | Source / Destination Zone | `Interna` / `Externa` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ae1.24` / `ae1.10` | Subinterfaces de *port-channel* |
+| 21 / 22 | Log Action / — | `Log-Forward` / `2026/09/03 14:22:11` | Perfil de log e campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `88421` / `1` | Sessão e contagem |
+| 25 / 26 | Source / Destination Port | `52344` / `443` | Porta efêmera e HTTPS |
+| 27 / 28 | NAT Source / Destination Port | `17233` / `443` | Portas após tradução |
+| 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits, protocolo e veredito |
+| 32 | Bytes | `824512` | Total: 824 KB |
+| 33 / 34 | Bytes Sent / Received | `4210` / `820302` | **4 KB a subir e 820 KB a descer**: é download, não exfiltração — a proporção é o que responde à pergunta |
+| 35 | Packets | `1842` | Total de pacotes |
+| 36 / 37 | Start Time / Elapsed | `2026/09/03 13:50:02` / `1928` | Início e duração: **32 minutos**. O log saiu às 14:22, mas a sessão começou às 13:50 |
+| 38 | Category | `any` | Sem categoria de URL atribuída |
+| 40 / 41 | Sequence Number / Action Flags | `7734512` / `0x0` | Sequencial e bits da ação |
+| 42 / 43 | Source / Destination Location | `10.10.24.0-10.10.24.255` / `US` | Faixa interna na origem e país no destino |
+| 45 / 46 | Packets Sent / Received | `1690` / `152` | Pacotes em cada direção |
+
+</details>
+
 **2.** Este evento veio com carimbo `2026-09-03T02:14:07Z` e o analista escreveu no ticket "logon às 02:14, madrugada, suspeito". A empresa fica em São Paulo (UTC−3). Qual é o horário local e a conclusão muda?
 
 ```
 <134>1 2026-09-03T02:14:07Z dc01.corp.local Microsoft-Windows-Security-Auditing 4624 - - EventID=4624 LogonType=3 TargetUserName=maria.costa TargetDomainName=CORP IpAddress=10.10.31.88 AuthenticationPackageName=Kerberos
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `LogonType` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `TargetUserName` | `maria.costa` | A conta **alvo** da ação |
+| `TargetDomainName` | `CORP` | Domínio da conta alvo |
+| `IpAddress` | `10.10.31.88` | IP de origem |
+| `AuthenticationPackageName` | `Kerberos` | Pacote que autenticou |
+
+</details>
 
 **3.** Um candidato tem Security+ e nenhuma prática. Ele quer a próxima certificação. Pela tabela de custo-benefício, o que recomendar e por quê?
 

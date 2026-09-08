@@ -129,6 +129,36 @@ FortiGate, no formato chave=valor:
 date=2026-09-03 time=14:31:55 devname="FG-CORP-01" devid="FG100ETK20000123" logid="0419016384" type="utm" subtype="ips" eventtype="signature" level="alert" srcip=203.0.113.201 srcport=44120 dstip=10.10.50.20 dstport=445 proto=6 action="dropped" policyid=12 attack="MS.SMB.Server.Trans.Peeking.Data.Information.Disclosure" severity="critical" attackid=42501 profile="ips_perimetro" incidentserialno=1096312 msg="applications3: MS.SMB.Server..."
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:31:55` | Hora local do equipamento |
+| `devname` | `"FG-CORP-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100ETK20000123"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0419016384"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"utm"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"ips"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `eventtype` | `"signature"` | Tipo do evento dentro da categoria UTM |
+| `level` | `"alert"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `203.0.113.201` | IP de origem |
+| `srcport` | `44120` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `10.10.50.20` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"dropped"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `attack` | `"MS.SMB.Server.Trans.Peeking.Data.Information.Disclosure"` | Nome da assinatura de IPS que disparou |
+| `severity` | `"critical"` | Gravidade atribuída à assinatura |
+| `attackid` | `42501` | Identificador numérico da assinatura — é por ele que se pesquisa na base do fabricante |
+| `profile` | `"ips_perimetro"` | Perfil de segurança que estava aplicado à regra |
+| `incidentserialno` | `1096312` | Número que agrupa os eventos do mesmo incidente de IPS |
+| `msg` | `"applications3: MS.SMB.Server..."` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+| — | — | `attackid` é o que se pesquisa na base do fabricante; `attack` é o nome legível. E `incidentserialno` agrupa os eventos do mesmo incidente — é por ele que se vê se foi uma tentativa ou uma série |
+
+</details>
+
 Aqui: `action="dropped"` (bloqueado), origem externa `203.0.113.201` atacando o SMB (porta 445) de um servidor interno, severidade crítica.
 
 ### O que o SOC N1 observa
@@ -231,6 +261,8 @@ Este é o formato que você mais vai ler na vida real. EVE significa Extensible 
 
 Dissecando campo a campo:
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado | Por que importa para o N1 |
 |---|---|---|
 | `timestamp` | Momento do evento, com fuso | Base da linha do tempo da investigação |
@@ -247,6 +279,8 @@ Dissecando campo a campo:
 | `tls.subject` / `issuerdn` | Dono e emissor do certificado | `CN=localhost` autoassinado em servidor de internet é anormal |
 | `tls.ja3.hash` | Impressão digital do cliente TLS | Identifica a ferramenta que abriu a conexão, não o site |
 | `flow.pkts_*` / `bytes_*` | Volume nos dois sentidos | Pouco tráfego e sessão longa combina com canal de controle |
+
+</details>
 
 ### O que é a assinatura que disparou
 
@@ -378,6 +412,23 @@ Source Network Address: 10.10.20.55
 Source Port:       49877
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Reason` | `Unknown user name or bad password` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Workstation Name` | `NB-VENDAS-07` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.20.55` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `49877` | Porta de origem, efêmera |
+
+</details>
+
 Campos que importam: `Logon Type 3` é logon pela rede (SMB, compartilhamento); `Sub Status 0xC000006A` é senha errada com usuário existente; `0xC0000064` seria usuário inexistente; `Source Network Address` é de onde veio a tentativa.
 
 **Busca em SPL (Splunk):**
@@ -428,6 +479,20 @@ ParentImage: C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE
 User: CORP\jsilva
 Hashes: SHA256=A1B2C3D4E5F6...
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `1` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `1` = Sysmon **Process Create** |
+| `UtcTime` | `2026-09-03 14:22:11.442` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `CommandLine` | `powershell.exe -nop -w hidden -enc <cadeia base64 removida>` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+| `ParentImage` | `C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE` | Caminho do processo **pai**. **É aqui que o Sysmon brilha**: Word ou Excel como pai de `powershell.exe` é sinal forte por si só |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `Hashes` | `SHA256=A1B2C3D4E5F6...` | Resumos criptográficos do executável — servem para procurar o mesmo binário na frota |
+
+</details>
 
 Sysmon EventID 3 é conexão de rede e 22 é consulta DNS feita pelo processo. O par 1 + 3 mostra quem executou e para onde falou.
 
@@ -576,11 +641,15 @@ Um documento do Word abrindo o PowerShell nunca é comportamento normal de escri
 </Event>
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado | Por que importa |
 |---|---|---|
 | `ParentImage` | quem criou o processo | Office criando shell = anomalia clássica |
 | `IntegrityLevel` | nível de privilégio | `Medium` = usuário comum, ainda sem escalação |
 | `User` | conta que executou | define o escopo do incidente |
+
+</details>
 
 Isso mapeia para **T1566.001 (Spearphishing Attachment)** e **T1059.001 (PowerShell)** no MITRE ATT&CK.
 
@@ -597,6 +666,25 @@ SourceIp: 10.10.20.41  SourcePort: 51204
 DestinationIp: 203.0.113.77  DestinationPort: 443
 DestinationHostname: cdn-update.example.com
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `3` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `3` = Sysmon **Network Connect** |
+| `UtcTime` | `2026-09-02 14:02:19.108` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `ProcessId` | `6688` | PID do processo |
+| `User` | `CORP\maria.costa` | Conta sob a qual o processo corre |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `Initiated` | `true` | `true` quando a conexão **partiu** desta máquina |
+| `SourceIp` | `10.10.20.41` | IP de origem da conexão |
+| `SourcePort` | `51204` | Porta de origem |
+| `DestinationIp` | `203.0.113.77` | IP de destino da conexão |
+| `DestinationPort` | `443` | Porta de destino |
+| `DestinationHostname` | `cdn-update.example.com` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
 
 O PowerShell abriu conexão HTTPS para um host externo oito segundos após nascer.
 
@@ -619,6 +707,22 @@ query=cdn-update.example.com qtype_name=A rcode_name=NOERROR
 answers=203.0.113.77 TTLs=60.000000
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756821730.981` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CwT4x2` | Identificador único da conexão |
+| `id.orig_h` | `10.10.20.41` | Quem perguntou — **a única máquina da rede que resolveu este domínio**, e é isso que a torna o paciente zero |
+| `id.resp_h` | `10.10.0.53` | O resolvedor interno que atendeu |
+| `query` | `cdn-update.example.com` | O nome consultado |
+| `qtype_name` | `A` | Registro de endereço IPv4 |
+| `rcode_name` | `NOERROR` | Resolveu com sucesso |
+| `answers` | `203.0.113.77` | O IP devolvido — é por ele que se procura no `conn.log` quem mais falou com esse destino |
+| `TTLs` | `60.000000` | Validade em cache, em segundos. **TTL de 60 s é típico de infraestrutura descartável**, feita para trocar de IP rápido |
+
+</details>
+
 **Evidência:** apenas `10.10.20.41` resolveu o domínio, TTL (Time To Live, tempo de vida do registro em cache) de 60 segundos — típico de infraestrutura descartável.
 
 ### Etapa 5 — O proxy: onde estava o download
@@ -628,6 +732,23 @@ answers=203.0.113.77 TTLs=60.000000
 1756821612.004  318 10.10.20.41 TCP_MISS/200 184320 GET
 http://files.example.com/invoice_0902.doc - HIER_DIRECT/198.51.100.44 application/msword
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| *timestamp* | `1756821612.004` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos — **dez minutos antes do alerta**, e é isso que faz deste registro a origem da cadeia |
+| duração | `318` | Milissegundos para atender |
+| cliente | `10.10.20.41` | A estação — a mesma que resolveu o domínio no `dns.log` da etapa anterior |
+| resultado/status | `TCP_MISS/200` | Buscou na origem e recebeu 200 OK: o download foi concluído |
+| bytes | `184320` | 184 KB entregues |
+| método | `GET` | Pedido de leitura |
+| URL | `http://files.example.com/invoice_0902.doc` | O arquivo baixado. Nome de fatura é o engodo mais comum em phishing |
+| usuário | `-` | Sem autenticação no proxy nesse pedido |
+| hierarquia/destino | `HIER_DIRECT/198.51.100.44` | O IP de onde veio o documento |
+| tipo de conteúdo | `application/msword` | MIME de documento Word — o que permite macro |
+
+</details>
 
 **Evidência:** dez minutos antes do alerta, a mesma máquina baixou `invoice_0902.doc` (184 KB, código 200 = sucesso). Achamos a origem: um anexo/download de fatura falsa.
 
@@ -640,6 +761,28 @@ Trust,Untrust,ethernet1/2,ethernet1/1,rule-outbound-web,maria.costa,
 ssl,443,51204,allow,1892,742,1150,14,3
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | Receive Time | `2026/09/02 14:02:19` | Quando o firewall registrou |
+| 2 | Serial Number | `013201001234` | Qual equipamento gerou |
+| 3 / 4 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 5 / 6 | Source / Destination Address | `10.10.20.41` / `203.0.113.77` | **A mesma origem e o mesmo destino das etapas anteriores** — é aqui que a cadeia fecha: DNS resolveu, proxy baixou, firewall confirma para onde |
+| 7 / 8 | Source / Destination Zone | `Trust` / `Untrust` | O sentido do tráfego |
+| 9 / 10 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/1` | Interfaces de entrada e saída |
+| 11 | Rule Name | `rule-outbound-web` | A regra que permitiu a saída |
+| 12 | Source User | `maria.costa` | Usuário resolvido pelo User-ID |
+| 13 | Application | `ssl` | App-ID identificou TLS |
+| 14 / 15 | Destination / Source Port | `443` / `51204` | **Repare na ordem invertida**: neste recorte a porta de destino vem antes da de origem |
+| 16 | Action | `allow` | O veredito |
+| 17 | Bytes | `1892` | Total nos dois sentidos |
+| 18 / 19 | Bytes Sent / Received | `742` / `1150` | Volume em cada direção — pouquíssimo tráfego, compatível com um beacon |
+| 20 / 21 | Packets Sent / Received | `14` / `3` | Pacotes em cada direção |
+| — | — | — | **Recorte de 21 campos**, com ordem própria; o formato completo tem mais de 46 |
+
+</details>
+
 Campos: origem, destino, zonas, regra aplicada (`rule-outbound-web`), usuário, aplicação (`ssl`), ação (`allow`), bytes enviados/recebidos. **1150 bytes enviados e 742 recebidos, em 14 pacotes** — sessão curta, padrão de *beacon* (sinal periódico de C2, Command and Control, servidor de comando do atacante). Técnica **T1071.001**.
 
 ### Etapa 7 — O AD e o usuário
@@ -651,6 +794,20 @@ Workstation: WKS-FIN-041  Source Network Address: 10.10.20.41  Time: 08:12:04
 # Windows Security 4768 — TGT Kerberos solicitado
 EventID=4768  Account Name: maria.costa  Ticket Encryption Type: 0x12  Result Code: 0x0
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` / `4768` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido**; `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Logon Type` | `2 (interativo)` | **Como a sessão foi iniciada.** |
+| `Workstation` | `WKS-FIN-041` | Nome declarado pela máquina de origem |
+| `Source Network Address` | `10.10.20.41  Time: 08:12:04` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Ticket Encryption Type` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
+| `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
+
+</details>
 
 Nenhum 4625 (falha de logon), nenhum 4769 anômalo para outros serviços, nenhum logon tipo 3 (rede) partindo da estação para outros servidores. **Conclusão: a conta não foi usada para movimentação lateral ainda.**
 

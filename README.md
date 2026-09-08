@@ -5,7 +5,7 @@ Curso completo de redes para quem quer trabalhar como analista N1 em um SOC
 
 **https://p9n77w5dm2-jpg.github.io/Estudo-Redes/**
 
-21 módulos · 183 mil palavras · exercícios com gabarito · 15 laboratórios práticos · roadmap de 90 dias
+21 módulos · 238 mil palavras · exercícios com gabarito · 15 laboratórios práticos · roadmap de 90 dias
 
 ---
 

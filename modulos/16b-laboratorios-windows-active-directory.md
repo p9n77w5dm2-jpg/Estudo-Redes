@@ -438,6 +438,29 @@ Workstation Name:       WKS01
 Source Network Address: 10.10.10.50
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Log Name` | `Security` | Qual registro guarda o evento: `Security` é o de auditoria, `System` o do sistema, `Microsoft-Windows-Sysmon/Operational` o do Sysmon |
+| `Source` | `Microsoft-Windows-Security-Auditing` | Provedor que gerou o evento |
+| `Event ID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Task Category` | `Logon` | Categoria de auditoria a que o evento pertence |
+| `Computer` | `WKS01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Subject` | *(cabeçalho)* | *(cabeçalho de seção)* **Quem pediu a ação** — não confundir com o alvo dela |
+| `Security ID` | `NULL SID` / `CORP\jsilva` | O **SID**, identificador que não muda quando a conta é renomeada — é ele que resolve renomeações |
+| `Account Name` | `-` / `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `New Logon` | *(cabeçalho)* | *(cabeçalho de seção)* Os dados da sessão que acabou de ser criada |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Logon ID` | `0x3E9A41` | **Costura os eventos da mesma sessão**: o 4624 que a abre, os 5140 de acesso e o 4634 que a fecha trazem o mesmo valor |
+| `Logon Type` | `2` | **Como a sessão foi iniciada.** `2` = **interativo** — teclado da própria máquina |
+| `Logon Process` | `User32` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `Negotiate` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Workstation Name` | `WKS01` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.10.50` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+
+</details>
+
 Evento **4625** — falha de logon, também no cliente:
 
 ```
@@ -457,6 +480,23 @@ Logon Type:         2
 Source Network Address: 10.10.10.50
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Event ID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Computer` | `WKS01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa o motivo da falha |
+| `Failure Reason` | `Unknown user name or bad password.` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `2` | **Como a sessão foi iniciada.** `2` = **interativo** — teclado da própria máquina |
+| `Source Network Address` | `10.10.10.50` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+
+</details>
+
 Evento **4768** — o DC emitiu um **TGT** (*Ticket Granting Ticket*, o "crachá principal" do Kerberos):
 
 ```
@@ -474,6 +514,22 @@ Ticket Encryption:   0x12
 Result Code:         0x0
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Event ID` | `4768` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio |
+| `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Supplied Realm Name` | `CORP.LOCAL` | O *realm* Kerberos que o cliente declarou |
+| `Service Name` | `krbtgt` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Options` | `0x40810010` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
+| `Ticket Encryption` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
+| `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
+
+</details>
+
 Evento **4769** — pedido de ticket de serviço (o "crachá de sala"):
 
 ```
@@ -488,6 +544,20 @@ Client Address:    ::ffff:10.10.10.50
 Ticket Encryption: 0x12
 Failure Code:      0x0
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Event ID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
+| `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `WKS01$` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Encryption` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
+| `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
+
+</details>
 
 Evento **4776** — validação de credencial via **NTLM** (protocolo antigo, anterior ao Kerberos):
 
@@ -656,6 +726,8 @@ Network Information:
 
 Campos que importam para o N1:
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado | Uso na investigação |
 |---|---|---|
 | `Account Name` | Conta que falhou | Serve para contar **contas distintas** |
@@ -665,6 +737,8 @@ Campos que importam para o N1:
 | `Sub Status 0xC0000064` | **Usuário não existe** | Sinal de enumeração às cegas |
 | `Sub Status 0xC0000234` | Conta **bloqueada** | O spraying passou do limite |
 | `Source Network Address` | IP de origem | Chave do agrupamento |
+
+</details>
 
 Se o Kerberos estiver em jogo (o normal em domínio), o mesmo ataque também gera **4771 — Kerberos pre-authentication failed** com `Failure Code 0x18` (senha incorreta) e **4776** no NTLM. Trate os três como a mesma família de evidência.
 
@@ -948,6 +1022,33 @@ attachment="none" url_count=1 url="hxxp://cdn-docs-fatura[.]example/inv/88213.ht
 action=deliver reason="policy_allow_low_score" score=3.9
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-04-14` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `08:41:07` | Hora local do equipamento |
+| `devname` | `"MAILGW-01"` | Nome do equipamento que gerou o log |
+| `logid` | `"0954023001"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"email"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"delivery"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `msg_id` | `"<4f2a91@fornecedor-cobranca.example>"` | Identificador da mensagem de e-mail — **é o que permite rastrear a mesma mensagem em todos os saltos** |
+| `from` | `"cobranca@fornecedor-cobranca.example"` | Remetente declarado no envelope |
+| `to` | `"jsilva@empresa-exemplo.com.br"` | Destinatário |
+| `subject` | `"Fatura 88213 vencida - regularizar hoje"` | Assunto da mensagem |
+| `spf` | `fail` | Resultado do SPF: o IP que enviou está autorizado pelo domínio? |
+| `dkim` | `none` | Resultado do DKIM: a assinatura criptográfica da mensagem confere? |
+| `dmarc` | `fail` | Resultado do DMARC, que junta SPF e DKIM e diz o que fazer. **`fail` com `action=deliver` significa que a mensagem entrou apesar de reprovar** |
+| `attachment` | `"none"` | Se havia anexo |
+| `url_count` | `1` | Quantos links a mensagem continha |
+| `url` | `"hxxp://cdn-docs-fatura[.]example/inv/88213.html"` | URL pedida |
+| `action` | `deliver` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `reason` | `"policy_allow_low_score"` | **O campo que resolve o caso**: por que falhou ou por que terminou |
+| `score` | `3.9` | Pontuação de risco atribuída |
+| — | — | `spf`, `dkim` e `dmarc` a reprovar e ainda assim `action=deliver`: a mensagem entrou porque o `score` ficou abaixo do corte. **A isca não é anexo, é link** — daí `attachment="none"` com `url_count` acima de zero |
+
+</details>
+
 Campos que importam: `spf=fail`, `dkim=none`, `dmarc=fail` (o remetente **não** provou ser quem diz), `action=deliver` (passou mesmo assim, porque a nota ficou abaixo do corte) e `url` (a isca não é anexo, é link — por isso `attachment="none"`).
 
 **2) Proxy (Squid `access.log`, tempo em epoch)**
@@ -957,7 +1058,23 @@ Campos que importam: `spf=fail`, `dkim=none`, `dmarc=fail` (o remetente **não**
 1776156131.907  1633 10.10.24.14 TCP_MISS/200 421904 GET http://cdn-docs-fatura.example/inv/Fatura_88213.xlsm - HIER_DIRECT/203.0.113.77 application/vnd.ms-excel.sheet.macroEnabled.12
 ```
 
-Leitura: epoch `1776156094` = **2026-04-14 08:41:34 UTC**; `1776156131` = **08:42:11 UTC**. Cliente `10.10.24.14`, código `TCP_MISS/200` (buscou na origem e recebeu 200 OK), 421904 bytes baixados, tipo MIME de planilha **com macro habilitada**.
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (a página) / 2ª linha (o arquivo) | O que significa |
+|---|---|---|
+| *timestamp* | `1776156094.221` / `1776156131.907` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos — as duas ações distam **37 segundos**: o tempo de a pessoa abrir a página e clicar |
+| duração | `842` / `1633` | Milissegundos para atender cada uma |
+| cliente | `10.10.24.14` | A mesma estação nas duas |
+| resultado/status | `TCP_MISS/200` | Buscou na origem e recebeu 200 OK nas duas — **os dois downloads aconteceram** |
+| bytes | `3120` / `421904` | 3 KB da página; **422 KB do arquivo** |
+| método | `GET` | Pedido de leitura |
+| URL | `/inv/88213.html` / `/inv/Fatura_88213.xlsm` | O domínio `cdn-docs-fatura.example` imita CDN de faturas; a extensão **`.xlsm` é planilha com macro** |
+| usuário | `-` | Sem autenticação no proxy |
+| hierarquia/destino | `HIER_DIRECT/203.0.113.77` | O IP de onde veio — cruza com o firewall e com o `dns.log` |
+| tipo de conteúdo | `text/html` / `application/vnd.ms-excel.sheet.macroEnabled.12` | O MIME da 2ª **diz explicitamente `macroEnabled`**: é o servidor a confirmar que o arquivo carrega macro |
+
+</details>
+
 
 **3) Sysmon — Event ID 1 (Process Create) e Event ID 3 (Network Connect)**
 
@@ -982,6 +1099,31 @@ DestinationIp=198.51.100.42 DestinationPort=443
 DestinationHostname=api-sync-cloud.example
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `1` / `3` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `1` = Sysmon **Process Create**; `3` = Sysmon **Network Connect** |
+| `UtcTime` | `2026-04-14 08:43:02.117` / `2026-04-14 08:43:19.884` / `2026-04-14 08:43:41.502` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Computer` | `WKS-FIN-014.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Image` | `C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE` / `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `ParentImage` | `C:\Windows\explorer.exe` / `C:\Program Files\Microsoft Office\root\Office16\EXCEL.EXE` | Caminho do processo **pai**. **É aqui que o Sysmon brilha**: Word ou Excel como pai de `powershell.exe` é sinal forte por si só |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `ProcessGuid` | `{a1b2-...-0091}` | Identificador **único e global** do processo. Ao contrário do PID, não é reciclado — é ele que liga os eventos do mesmo processo |
+| `ProcessId` | `6144` / `7320` | PID do processo |
+| `CommandLine` | `"powershell.exe -nop -w hidden -enc <BASE64_OMITIDO>"` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+| `ParentProcessId` | `6144` | PID do processo pai |
+| `Hashes` | `SHA256=9F1C4A77E0B2D3558C6A0E41B7D2295E3A88C0F4D61B9E7205AA3C8D14E6F0B2` | Resumos criptográficos do executável — servem para procurar o mesmo binário na frota |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `Initiated` | `true` | `true` quando a conexão **partiu** desta máquina |
+| `SourceIp` | `10.10.24.14` | IP de origem da conexão |
+| `SourcePort` | `51188` | Porta de origem |
+| `DestinationIp` | `198.51.100.42` | IP de destino da conexão |
+| `DestinationPort` | `443` | Porta de destino |
+| `DestinationHostname` | `api-sync-cloud.example` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
+
 O sinal forte não é o PowerShell existir — é **EXCEL.EXE ser pai de powershell.exe**. Planilha não abre terminal. Some-se `-w hidden` (janela oculta) e `-enc` (comando codificado) e você tem execução mascarada.
 
 **4) Zeek `dns.log` (campos separados por TAB)**
@@ -993,6 +1135,22 @@ O sinal forte não é o PowerShell existir — é **EXCEL.EXE ser pai de powersh
 1776156815.774  CmT4x3  10.10.24.14  53177  10.10.1.10  53  udp  api-sync-cloud.example  A  NOERROR  198.51.100.42
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas três linhas | O que significa |
+|---|---|---|
+| `ts` | `1776156215.331`, `1776156515.208`, `1776156815.774` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. **Exatamente 300 segundos entre cada** |
+| `uid` | `CmT4x1`, `CmT4x2`, `CmT4x3` | Três consultas distintas — cruzam com o `conn.log` |
+| `id.orig_h` / `id.orig_p` | `10.10.24.14` / `53122`, `53140`, `53177` | A estação e a porta efêmera de cada consulta |
+| `id.resp_h` / `id.resp_p` | `10.10.1.10` / `53` | O resolvedor interno, na porta 53 |
+| `proto` | `udp` | Consulta DNS sobre UDP |
+| `query` | `api-sync-cloud.example` | O nome consultado, **o mesmo nas três**. Nome genérico de "API na nuvem" é disfarce comum |
+| `qtype_name` | `A` | Registro de endereço IPv4 |
+| `rcode_name` | `NOERROR` | Resolveu nas três: o domínio existe e está no ar |
+| `answers` | `198.51.100.42` | O IP devolvido, **sempre o mesmo**. É este endereço que se procura no firewall e no proxy |
+
+</details>
+
 Repare no intervalo: 08:43:35, 08:48:35, 08:53:35 — exatos **300 segundos**. Esse batimento regular chama-se *beaconing*: a máquina "liga para casa" no relógio. Gente não navega assim.
 
 **5) Firewall (Palo Alto, TRAFFIC em CSV — colunas reduzidas para leitura)**
@@ -1003,6 +1161,25 @@ receive_time,type,src,dst,src_user,app,rule,session_end_reason,bytes_sent,bytes_
 2026/04/14 09:31:55,TRAFFIC,10.10.24.14,198.51.100.42,corp\jsilva,ssl,Regra-Saida-Internet,tcp-fin,88104,5120,443,allow
 2026/04/14 10:07:12,TRAFFIC,10.10.9.31,198.51.100.42,corp\svc_backup,ssl,Regra-Saida-Servidores,tcp-fin,1264883910,74220,443,allow
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo (do cabeçalho do exemplo) | Valores nas três linhas | O que significa |
+|---|---|---|
+| `receive_time` | `08:43:41`, `09:31:55`, `10:07:12` | Quando o firewall registrou cada sessão. **A terceira é 1h23 depois da primeira** — a cadeia demorou |
+| `type` | `TRAFFIC` | Log de sessão |
+| `src` | `10.10.24.14`, `10.10.24.14`, **`10.10.9.31`** | Origem. As duas primeiras são a estação comprometida; **a terceira é outra máquina** — o servidor de arquivos. É a prova do movimento lateral |
+| `dst` | `198.51.100.42` nas três | **O mesmo destino externo nas três.** É o que liga as duas máquinas ao mesmo incidente |
+| `src_user` | `corp\jsilva`, `corp\jsilva`, **`corp\svc_backup`** | Usuário resolvido. A terceira usa a **conta de serviço** — credencial roubada |
+| `app` | `ssl` | App-ID: TLS nas três |
+| `rule` | `Regra-Saida-Internet` ×2, `Regra-Saida-Servidores` | A regra que permitiu. **Regras diferentes porque as zonas de origem são diferentes** |
+| `session_end_reason` | `tcp-fin` | Fim normal nas três: nada foi cortado |
+| `bytes_sent` | `4210`, `88104`, **`1264883910`** | Volume a subir. Cresce de 4 KB para 88 KB e depois **1,26 GB** — o beacon, a preparação e a exfiltração |
+| `bytes_received` | `3980`, `5120`, `74220` | Volume a descer. Permanece pequeno: quem fala é a rede interna |
+| `dst_port` | `443` | HTTPS nas três — a porta que quase ninguém bloqueia |
+| `action` | `allow` | **Permitido nas três.** Nenhum bloqueio; a detecção teve de vir do padrão, não do veredito |
+
+</details>
 
 A última linha é a que dói: **1.264.883.910 bytes enviados** (≈1,18 GB) de um **servidor**, com a conta `svc_backup`, para o mesmo IP do C2 (*command and control*, servidor de comando e controle). Saída muito maior que a entrada = exfiltração.
 
@@ -1025,6 +1202,21 @@ EventID=5140 (acesso a compartilhamento de rede) 2026-04-14 09:55:40 UTC  SRV-FS
 Account Name: svc_backup   Share Name: \\*\Financeiro
 Source Address: 10.10.24.14   Access: ReadData (ou ListDirectory)
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625 (falha de logon) 2026-04-14 09:52:14 UTC  DC-CORP-01` / `4625 2026-04-14 09:52:16 UTC  DC-CORP-01` / `4624 (logon com sucesso) 2026-04-14 09:53:02 UTC  SRV-FS-02 (10.10.9.31)` / `5140 (acesso a compartilhamento de rede) 2026-04-14 09:55:40 UTC  SRV-FS-02` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Account Name` | `admin.rodrigo` / `svc_backup` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Source Network Address` | `10.10.24.14` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Status` | `0xC000006A (senha incorreta)` / `0xC000006A` | Código geral do resultado. `0xC000006A` = **senha errada** |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Share Name` | `\\*\Financeiro` | O compartilhamento acedido. **`C$`, `ADMIN$` e `IPC$` são administrativos**, e não uso comum |
+| `Source Address` | `10.10.24.14   Access: ReadData (ou ListDirectory)` | IP de origem |
+
+</details>
 
 `Logon Type: 3` = logon de rede (veio de outra máquina, não do teclado). NTLM numa rede com Kerberos disponível é bandeira amarela. E `5140` mostra qual pasta foi tocada.
 

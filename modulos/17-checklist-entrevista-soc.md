@@ -56,7 +56,22 @@ Regra de ouro: em entrevista de SOC, **resposta errada dita com convicção é p
 1725360012.121  10.10.20.55  49313  10.10.30.12  3389  tcp  -  0.000131  S0
 ```
 
-`conn_state` é o campo-chave: `S0` significa SYN enviado sem resposta (porta filtrada ou host morto), `REJ` significa conexão rejeitada com RST, e `SF` seria uma conexão normal completa. Três destinos diferentes em 7 milissegundos, todos sem sessão estabelecida, é comportamento de varredura (MITRE ATT&CK T1046 — Network Service Discovery).
+<details><summary>Ver legenda</summary>
+
+| Campo | Valores nas três linhas | O que significa |
+|---|---|---|
+| `ts` | `1725360012.114`, `.118`, `.121` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. **Três tentativas em 7 milissegundos** — velocidade de ferramenta, não de pessoa |
+| `id.orig_h` | `10.10.20.55` | Sempre a mesma origem: é ela que está varrendo |
+| `id.orig_p` | `49311`, `49312`, `49313` | Portas efêmeras **consecutivas** — assinatura de um processo abrindo conexões em série |
+| `id.resp_h` | `10.10.30.10`, `.11`, `.12` | Destinos **sequenciais**: a ferramenta está percorrendo a faixa host a host |
+| `id.resp_p` | `445`, `445`, `3389` | Portas de administração remota: SMB e RDP |
+| `proto` | `tcp` | Transporte |
+| `service` | `-` | Vazio nas três: **nenhuma sessão chegou a existir**, logo não houve conteúdo para o Zeek identificar |
+| `duration` | `0.000112`, `0.000109`, `0.000131` | Frações de milissegundo — só o tempo do SYN e da resposta |
+| `conn_state` | `S0`, `REJ`, `S0` | O campo-chave: `S0` = SYN enviado sem resposta (porta filtrada ou host inexistente); `REJ` = recusada com RST, **o que prova que aquele host existe e está ligado**; `SF` seria conexão completa |
+
+</details>
+
 
 **Erro comum de analista júnior:** ver `S0` e concluir "ataque bem-sucedido". `S0` normalmente indica exatamente o contrário: nada foi estabelecido.
 
@@ -111,7 +126,23 @@ Log Suricata EVE JSON. `src_ip` é a estação, `dest_ip` é o DNS interno, `rrn
 %ASA-6-302013: Built outbound TCP connection 88421 for outside:198.51.100.23/443 (198.51.100.23/443) to inside:10.10.20.55/49877 (203.0.113.44/61204)
 ```
 
-Log Cisco ASA. A primeira linha é a tradução NAT: a estação 10.10.20.55 na porta 49877 saiu como 203.0.113.44 na porta 61204. A segunda mostra a conexão de saída. Sem a linha `305011`, o IP 203.0.113.44 sozinho não aponta para máquina nenhuma.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `305011` | Tradução dinâmica de NAT criada. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| `from` | `inside:10.10.20.55/49877` | **O endereço real**: interface, IP privado e porta de origem |
+| `to` | `outside:203.0.113.44/61204` | **O endereço traduzido**: IP público e a porta que o ASA sorteou. Repare que **a porta também muda** (49877 → 61204) |
+| *message ID* (2ª linha) | `302013` | Conexão TCP construída — o `305011` cria a tradução, o `302013` usa-a |
+| id da conexão | `88421` | Número na tabela de estado |
+| lado remoto | `outside:198.51.100.23/443` | O destino real da navegação |
+| lado local | `inside:10.10.20.55/49877 (203.0.113.44/61204)` | O host local e, entre parênteses, o mesmo par traduzido da 1ª linha |
+| — | — | **É este par de linhas que responde a "quem foi?"** quando chega uma denúncia sobre `203.0.113.44:61204`. Sem o `305011`, ou sem o parêntese do `302013`, o IP público não aponta para máquina nenhuma |
+
+</details>
+
 
 ### 9. Para que serve o gateway padrão
 
@@ -247,6 +278,32 @@ Trust,Untrust,ethernet1/2,ethernet1/1,Log-Forward,tcp,allow,
 14820,4310,10510,62,445,54233,0,0x400053,...
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | Receive Time | `2026-09-03 14:22:07` | Quando o firewall registrou |
+| 2 | Serial Number | `014201007777` | Qual equipamento gerou |
+| 3 / 4 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 5 / 6 | Source / Destination Address | `10.10.4.87` / `203.0.113.45` | **Origem interna e destino na Internet** — e é aí que está o problema |
+| 7 / 8 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | Sem NAT nesta sessão |
+| 9 | Rule Name | `Regra-Saida-Internet` | A regra que permitiu |
+| 10 / 11 | Source / Destination User | `CORP\jsilva` / `-` | Usuário resolvido |
+| 12 | Application | `ms-ds-smbv3` | **O campo decisivo.** App-ID identificou **SMB versão 3** — protocolo de rede local, saindo para a Internet. Não existe motivo legítimo para isso |
+| 13 | Virtual System | `vsys1` | Firewall virtual |
+| 14 / 15 | Source / Destination Zone | `Trust` / `Untrust` | Confirma o sentido: de dentro para fora |
+| 16 / 17 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/1` | Interfaces de entrada e saída |
+| 18 | Log Action | `Log-Forward` | Perfil de encaminhamento |
+| 19 / 20 | Protocol / Action | `tcp` / `allow` | Protocolo e **`allow`: a sessão saiu**, a política não barrou |
+| 21 | Bytes | `14820` | Total nos dois sentidos |
+| 22 / 23 | Bytes Sent / Received | `4310` / `10510` | Volume em cada direção |
+| 24 | Packets | `62` | Total de pacotes |
+| 25 / 26 | Destination / Source Port | `445` / `54233` | **445 é SMB.** Neste recorte a porta de destino vem antes da de origem |
+| 27 / 28 | NAT Port / Flags | `0` / `0x400053` | Sem tradução e os bits da sessão |
+| 29 | *(truncado)* | `...` | O exemplo corta aqui; o formato completo tem mais de 46 campos |
+
+</details>
+
 Campos: origem `10.10.4.87`, destino `203.0.113.45`, usuário `CORP\jsilva`, aplicação `ms-ds-smbv3`, ação `allow`, porta destino `445`, porta origem `54233`, bytes enviados `4310`.
 
 **O que o SOC N1 observa:** normal = 445 apenas entre estação e servidor interno. Suspeito = destino fora de RFC1918, ou muitos destinos internos diferentes na 445 em poucos minutos (varredura / movimentação lateral, T1021.002).
@@ -264,7 +321,27 @@ Campos: origem `10.10.4.87`, destino `203.0.113.45`, usuário `CORP\jsilva`, apl
  to inside:10.10.4.87/51422 duration 0:02:11 bytes 24880 TCP FINs
 ```
 
-`302013` é abertura, `302014` é fechamento com duração e bytes. Isso só existe porque o equipamento é stateful.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88214` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:198.51.100.30/443` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(198.51.100.30/443)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.4.87/51422` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(203.0.113.10/51422)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| *message ID* (2ª linha) | `302014` | Conexão TCP encerrada. **Contar `302013` e `302014` como dois eventos duplica a mesma sessão** no relatório |
+| id da conexão | `88214` | O **mesmo** número da 1ª linha: é assim que se sabe que falam da mesma conexão |
+| `duration` | `0:02:11` | Quanto tempo a conexão viveu, em `h:mm:ss` |
+| `bytes` | `24880` | Total transferido na sessão. **Só existe no `302014`** — quando o `302013` é escrito, ainda não há o que contar |
+| motivo | `TCP FINs` | Como terminou: `TCP FINs` é fim limpo nos dois sentidos; `TCP Reset-O` é RST vindo de fora (**O** de *Outside*); `TCP Reset-I` de dentro; `SYN Timeout` nunca completou; `Deny Terminate` a política cortou |
+
+</details>
+
 
 **Como se destacar:** diga que stateless ainda é usado em ACL de roteador e em regras de altíssimo volume, porque é barato em CPU.
 
@@ -290,7 +367,26 @@ url=hxxp://cdn-update.example-mal.test/panel.php urlcategory=Newly_Registered_Do
 reqmethod=POST reqsize=118 respsize=0 useragent=curl/8.4.0 clientip=10.10.7.22
 ```
 
-Campos úteis: `urlcategory` (domínio recém-registrado é bandeira vermelha), `useragent` (curl saindo de estação de usuário é anômalo), `action`.
+<details><summary>Ver legenda</summary>
+
+| Campo (Squid ou Zscaler) | Valor no exemplo | O que significa |
+|---|---|---|
+| Squid · *timestamp* | `1756907231.482` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| Squid · duração | `312` | Milissegundos para atender |
+| Squid · cliente | `10.10.4.87` | O IP de origem — o dado que o destino não vê |
+| Squid · resultado/status | `TCP_MISS/200` | Buscou na origem e recebeu 200 OK |
+| Squid · bytes | `41822` | 41 KB entregues |
+| Squid · URL e usuário | `…/relatorio.zip` · `jsilva` | O recurso e a conta autenticada no proxy |
+| Squid · hierarquia | `DIRECT/198.51.100.77` | Foi direto à origem |
+| Zscaler · `action` | `blocked` | O veredito da política |
+| Zscaler · `url` | `hxxp://cdn-update.example-mal.test/panel.php` | O destino. Escrito `hxxp` de propósito, para o link não ser clicável em relatório |
+| Zscaler · `urlcategory` | `Newly_Registered_Domains` | **Domínio registrado há dias.** Infraestrutura de ataque é nova por natureza — é das categorias mais úteis para triagem |
+| Zscaler · `reqmethod` / `reqsize` / `respsize` | `POST` · `118` · `0` | `POST` envia dados; 118 bytes subindo e **nada a descer** é o retrato de um beacon barrado |
+| Zscaler · `useragent` | `curl/8.4.0` | **Ferramenta de linha de comando, não navegador.** Numa estação de usuário é anomalia por si só |
+| Zscaler · `clientip` | `10.10.7.22` | A estação de origem |
+
+</details>
+
 
 **O que o SOC N1 observa:** normal = User-Agent de navegador conhecido e categoria de negócio. Suspeito = POST repetitivo para domínio novo, User-Agent de ferramenta (curl, python-requests, PowerShell).
 
@@ -306,6 +402,20 @@ ts=1756907512.331 id.orig_h=10.10.7.22 id.resp_h=203.0.113.88 id.resp_p=443
 server_name=cdn-update.example-mal.test version=TLSv13
 ja3=51c64c77e60f3980eea90869b68c58a8 validation_status="self signed certificate"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756907512.331` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `id.orig_h` | `10.10.7.22` | O cliente interno |
+| `id.resp_h` / `id.resp_p` | `203.0.113.88` / `443` | Destino externo em HTTPS |
+| `server_name` | `cdn-update.example-mal.test` | O SNI. **Visível mesmo sem inspeção de TLS** — é o que salva a investigação quando o destino está na lista de não-inspecionar |
+| `version` | `TLSv13` | Versão do TLS negociada |
+| `ja3` | `51c64c77e60f3980eea90869b68c58a8` | Impressão digital do cliente. Continua visível mesmo sem descriptografar |
+| `validation_status` | `self signed certificate` | O certificado é autoassinado. Contra um destino de internet, com SNI de domínio recém-criado, é achado clássico |
+
+</details>
 
 Certificado autoassinado em destino de internet, com SNI de domínio novo, é achado clássico.
 
@@ -344,6 +454,19 @@ EventID 4769  Account Name: jsilva@CORP.LOCAL  Service Name: MSSQLSvc/db01.corp.
               Ticket Encryption Type: 0x17  Client Address: 10.10.4.87
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4768` / `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio; `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
+| `Account Name` | `jsilva` / `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `krbtgt` / `MSSQLSvc/db01.corp.local` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `10.10.4.87` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Encryption Type` | `0x12` / `0x17` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno; `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
+| `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
+
+</details>
+
 **O que o SOC N1 observa:** `Ticket Encryption Type 0x12` é AES256 (bom). `0x17` é RC4 — quando aparece em massa e para muitos serviços diferentes vindo de um único host, é indício de Kerberoasting (T1558.003). Erro comum: alertar em todo 4769 com RC4; muitos ambientes legados geram isso o tempo todo, o sinal está no **volume e na variedade de serviços**.
 
 ### 11) "O que é NTLM e por que o hash é perigoso?"
@@ -359,6 +482,20 @@ EventID 4624  Logon Type: 3  Account Name: admin.rodrigo
               Workstation Name: NB-JSILVA  Source Network Address: 10.10.4.87
               Logon Process: NtLmSsp  Authentication Package: NTLM
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Account Name` | `admin.rodrigo` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Workstation Name` | `NB-JSILVA` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.4.87` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+
+</details>
 
 ```spl
 index=windows EventCode=4624 Logon_Type=3 Authentication_Package=NTLM
@@ -466,6 +603,20 @@ Logon Process: NtLmSsp
 Authentication Package: NTLM
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Source Network Address` | `10.10.20.45` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+
+</details>
+
 Isso é só evento. Vira alerta se a regra disser "Logon Type 3 com NTLM vindo de fora da faixa de estações". Vira incidente se `jsilva` estiver de férias e a origem for uma máquina que ele nunca usou.
 
 **Erro comum de júnior:** chamar tudo de "incidente" no ticket. Isso infla métrica, assusta gestão e queima credibilidade.
@@ -481,6 +632,26 @@ Fluxo correto: confirmar que é FP com evidência → documentar no ticket **por
 ```
 Nov 12 02:14:03 fw01 date=2026-11-12 time=02:14:03 devname="fw01" type="traffic" subtype="forward" action="deny" srcip=10.10.5.9 dstip=10.10.20.45 dstport=445 proto=6 policyid=12 service="SMB" msg="scan detected"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-11-12` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `02:14:03` | Hora local do equipamento |
+| `devname` | `"fw01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `srcip` | `10.10.5.9` | IP de origem |
+| `dstip` | `10.10.20.45` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"SMB"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `msg` | `"scan detected"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
 
 **Erro comum de júnior:** fechar como FP porque "sempre foi FP". Ataque real muitas vezes se esconde exatamente no ruído que ninguém olha mais.
 
@@ -498,6 +669,18 @@ ParentImage: C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE
 User: CORP\maria.costa
 CommandLine: cmd.exe /c whoami
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `1` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `1` = Sysmon **Process Create** |
+| `Image` | `C:\Windows\System32\cmd.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `ParentImage` | `C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE` | Caminho do processo **pai**. **É aqui que o Sysmon brilha**: Word ou Excel como pai de `powershell.exe` é sinal forte por si só |
+| `User` | `CORP\maria.costa` | Conta sob a qual o processo corre |
+| `CommandLine` | `cmd.exe /c whoami` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+
+</details>
 
 Esse é um IOA clássico — Word não deveria ser pai de `cmd.exe`.
 
@@ -544,6 +727,23 @@ Se o alerta é T1110.003, eu já sei que o passo seguinte do atacante costuma se
 1731398400.221   482 10.10.20.45 TCP_MISS/200 15233 GET http://login-corp-acesso.example.com/auth - HIER_DIRECT/203.0.113.77 text/html "Mozilla/5.0"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| *timestamp* | `1731398400.221` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| duração | `482` | Milissegundos para atender |
+| cliente | `10.10.20.45` | A estação — **é este registro que transforma "e-mail suspeito" em "o usuário clicou"** |
+| resultado/status | `TCP_MISS/200` | A página de phishing carregou com sucesso |
+| bytes | `15233` | 15 KB entregues: a página inteira, com o formulário |
+| método | `GET` | Pedido de leitura |
+| URL | `http://login-corp-acesso.example.com/auth` | O domínio imita portal de login corporativo, e `/auth` é a página de credenciais |
+| usuário | `-` | Sem autenticação no proxy nesse pedido |
+| hierarquia/destino | `HIER_DIRECT/203.0.113.77` | O IP do servidor de phishing |
+| tipo de conteúdo | `text/html` / `"Mozilla/5.0"` | O MIME e, no fim, o *user-agent* do navegador — sinal de que foi uma pessoa, não um script |
+
+</details>
+
 Squid mostrando `10.10.20.45` acessando o domínio de phishing: passou de "e-mail suspeito" para "usuário clicou".
 
 **Erro comum de júnior:** parar no "usuário não clicou" sem verificar os outros 40 destinatários.
@@ -583,6 +783,17 @@ EventID=4625  Account Name: maria.costa  Source Network Address: 203.0.113.50  S
 EventID=4625  Account Name: jsilva       Source Network Address: 203.0.113.50  Status: 0xC000006A
 EventID=4625  Account Name: svc_backup   Source Network Address: 203.0.113.50  Status: 0xC000006A
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `maria.costa` / `jsilva` / `svc_backup` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Source Network Address` | `203.0.113.50` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Status` | `0xC000006A` | Código geral do resultado. `0xC000006A` = **senha errada** |
+
+</details>
 
 `0xC000006A` = senha errada. `0xC0000064` = usuário inexistente (sinal de enumeração).
 
@@ -689,6 +900,21 @@ Entrevistador experiente não pergunta o que está no Google. Ele pergunta o que
 1725365401.602 10.10.20.45 203.0.113.77 443 tcp ssl 1.05 512 344 SF
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valores nas três linhas | O que significa |
+|---|---|---|
+| `ts` | `1725364801.220`, `1725365101.418`, `1725365401.602` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. Faça a subtração: **~300 segundos entre cada**, com variação de menos de 1 s |
+| `id.orig_h` | `10.10.20.45` | Sempre a mesma estação |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77` / `443` | Sempre o mesmo destino externo, em HTTPS |
+| `proto` / `service` | `tcp` / `ssl` | Transporte e serviço identificado |
+| `duration` | `1.02`, `0.98`, `1.05` | Cerca de 1 segundo em cada — só o tempo de perguntar e sair |
+| `orig_bytes` | `512` nas três | Payload enviado **idêntico**: o mesmo pedido a repetir |
+| `resp_bytes` | `340`, `340`, `344` | Payload devolvido quase idêntico |
+| `conn_state` | `SF` | Todas normais. É a **regularidade** que caracteriza o beacon, não o desfecho |
+
+</details>
+
 **Raciocínio esperado:** intervalo constante de ~300 s, bytes quase idênticos, duração curta. Isso é **beaconing** (T1071.001), não navegação humana. **Resposta modelo:** "Padrão periódico com baixo jitter e payload fixo. Verifico o SNI no `ssl.log`, a reputação de 203.0.113.77, o processo pai no Sysmon EventID 3 e escalo como possível C2." **Reprova quem:** diz "é HTTPS, é normal".
 
 ### Cenário 2 — Password spray
@@ -708,6 +934,23 @@ Entrevistador experiente não pergunta o que está no Google. Ele pergunta o que
 # Palo Alto TRAFFIC (CSV, campos-chave)
 ...,TRAFFIC,end,10.10.30.12,203.0.113.200,ssl,443,allow,"9843211","412",3600,...
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | *(truncado)* | `...` | O exemplo omite os primeiros campos de propósito, para focar no que importa |
+| 2 / 3 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 4 / 5 | Source / Destination Address | `10.10.30.12` / `203.0.113.200` | Origem interna e destino externo |
+| 6 / 7 | Application / Destination Port | `ssl` / `443` | App-ID e HTTPS |
+| 8 | Action | `allow` | A política permitiu |
+| 9 | Bytes Sent | `"9843211"` | **9,8 GB a subir.** Vem entre aspas neste recorte; as aspas não fazem parte do valor |
+| 10 | Bytes Received | `"412"` | 412 bytes a descer — a proporção que dispara o alerta |
+| 11 | Elapsed Time | `3600` | Duração: **exatamente 1 hora**. Um número redondo assim costuma indicar processo agendado, não pessoa |
+| 12 | *(truncado)* | `...` | O resto dos campos foi omitido |
+| — | — | — | **Falta o essencial para decidir**: o campo `Rule Name`, o `Source User` e o `Destination Location`. Sem eles não se sabe se `203.0.113.200` é o backup corporativo — que é exatamente o ponto do cenário |
+
+</details>
 
 Upload de 9,8 GB. **Raciocínio:** antes de gritar exfiltração, checo destino (é backup corporativo?), usuário, horário e histórico. **Resposta modelo:** "Volume alto sozinho não é veredicto; comparo com a linha de base do host e do destino." **Reprova quem:** escala sem contexto — ou fecha como falso positivo sem verificar o destino.
 
@@ -736,6 +979,23 @@ Service Name: svc_backup | Ticket Encryption Type: 0x17 | Client: jsilva | Clien
 # Squid access.log
 1725371200.104 312 10.10.40.77 TCP_DENIED/403 0 CONNECT malicioso.example.com:443 - HIER_NONE/- -
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| *timestamp* | `1725371200.104` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| duração | `312` | Milissegundos para atender |
+| cliente | `10.10.40.77` | A estação que tentou |
+| resultado/status | `TCP_DENIED/403` | A política barrou. **Prova a tentativa; não prova que a máquina está limpa** |
+| bytes | `0` | **Zero bytes**: nada foi trocado com o destino |
+| método | `CONNECT` | Pedido de túnel HTTPS |
+| URL | `malicioso.example.com:443` | O destino pretendido, só host e porta |
+| usuário | `-` | Sem autenticação nesse pedido |
+| hierarquia/destino | `HIER_NONE/-` | Confirma que o proxy não encaminhou nada |
+| tipo de conteúdo | `-` | Não houve conteúdo. **A pergunta que fica: houve `TCP_TUNNEL/200` para este domínio antes de a regra entrar?** |
+
+</details>
 
 **Raciocínio:** bloqueio prova tentativa, não impede. **Resposta modelo:** "Verifico se houve `TCP_TUNNEL/200` para o mesmo domínio antes da regra entrar, e se o host tentou outros destinos." **Reprova quem:** fecha o ticket com "bloqueado pelo proxy, sem impacto".
 

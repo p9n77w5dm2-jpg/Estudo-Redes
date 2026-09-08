@@ -72,6 +72,8 @@ Authentication-Results: mx01.corp.local;
 
 **Como ler campo a campo:**
 
+<details><summary>Ver legenda</summary>
+
 | Campo | O que significa | Sinal aqui |
 |---|---|---|
 | `Received` | Carimbo de cada salto; leia **de baixo para cima** | Origem real é `203.0.113.77`, um VPS aleatório |
@@ -81,6 +83,8 @@ Authentication-Results: mx01.corp.local;
 | `spf=fail` | SPF (Sender Policy Framework): o IP não tem permissão para enviar por aquele domínio | Falhou |
 | `dkim=none` | DKIM (DomainKeys Identified Mail): assinatura criptográfica ausente | Sem assinatura |
 | `dmarc=fail` | DMARC junta SPF+DKIM e diz o que fazer | Falhou, política de quarentena |
+
+</details>
 
 **Regra de ouro:** `spf=fail` **e** `dkim=none` **e** `From` diferente de `Reply-To` = altíssima suspeita.
 
@@ -334,6 +338,24 @@ Message=A new process has been created.
     Process Command Line: vssadmin.exe delete shadows /all /quiet
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `LogName` | `Security` | Qual registro guarda o evento |
+| `EventID` | `4688` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4688` = **criação de processo** |
+| `Message` | `A new process has been created.` | Texto legível do evento. **Não sirva de base para regra**: muda com idioma e versão |
+| `Creator Subject` | *(cabeçalho)* | *(cabeçalho de seção)* Quem criou o processo |
+| `Account Name` | `svc_backup` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Process Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa os campos do processo |
+| `New Process Name` | `C:\Windows\System32\vssadmin.exe` | Caminho do processo **criado** |
+| `Token Elevation Type` | `TokenElevationTypeFull (1)` | Se o processo nasceu elevado: `%%1936` completo, `%%1937` elevado por UAC, `%%1938` limitado |
+| `Creator Process Name` | `C:\Windows\System32\cmd.exe` | Caminho do processo **pai** — é a relação pai-filho que denuncia a cadeia de ataque |
+| `Process Command Line` | `vssadmin.exe delete shadows /all /quiet` | A linha de comando completa. **Só aparece se a auditoria estiver configurada para a incluir** — sem ela, metade da investigação desaparece |
+
+</details>
+
 Campos que importam: `New Process Name` diz **qual binário rodou**; `Process Command Line` diz **com quais argumentos** (só aparece se a auditoria de linha de comando estiver ativada — cobrimos isso no Módulo 8); `Creator Process Name` diz **quem chamou**, e `cmd.exe` chamando `vssadmin` fora de janela de manutenção é anormal.
 
 Logo depois, a parada de serviços de backup e antivírus:
@@ -345,6 +367,18 @@ EventID=7036 Source=Service Control Manager
   The Windows Defender Antivirus Service service entered the stopped state.
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `7036` | **Serviço mudou de estado** (arrancou ou parou). É o Service Control Manager a relatar, não uma auditoria de segurança |
+| `Source` | `Service Control Manager` | O componente que gerou o evento |
+| *(texto da mensagem)* | `The Veeam Backup Service service entered the stopped state.` | **É aqui que está a informação, e não num campo nomeado** — o 7036 não tem campo para o nome do serviço. Por isso a regra tem de casar o texto, e o texto **muda com o idioma do sistema** |
+| *(2ª ocorrência)* | `The Windows Defender Antivirus Service service entered the stopped state.` | O segundo serviço parado |
+| — | — | **A sequência é o achado, não cada linha.** Backup e antivírus parados um atrás do outro é preparação de ransomware: primeiro remove-se a recuperação e a deteção, depois cifra-se. Um 7036 isolado é rotina; estes dois juntos são incidente |
+
+</details>
+
 E a rajada de escrita e renomeação em massa, vista no **Sysmon Event ID 11 (FileCreate)** e no compartilhamento SMB:
 
 ```
@@ -353,6 +387,17 @@ Sysmon EventID=11 FileCreate
   TargetFilename: \\FS-01\Financeiro\2026\balanco_Q2.xlsx.lckd
   User: CORP\svc_backup
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `11 FileCreate` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Image` | `C:\Users\Public\svc-host32.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `TargetFilename` | `\\FS-01\Financeiro\2026\balanco_Q2.xlsx.lckd` | Ficheiro criado ou escrito |
+| `User` | `CORP\svc_backup` | Conta sob a qual o processo corre |
+
+</details>
 
 O sufixo novo (`.lckd`) em milhares de arquivos, sempre pelo mesmo processo, é a assinatura da criptografia em andamento.
 
@@ -432,6 +477,22 @@ ts                   uid       id.orig_h    id.orig_p  id.resp_h      id.resp_p 
 2026-09-04T09:15:13Z CxA1b5    10.10.20.42  50290      203.0.113.77   443       tcp   ssl     0.401    417        1288       SF
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas quatro linhas | O que significa |
+|---|---|---|
+| `ts` | `09:00:12`, `09:05:14`, `09:10:11`, `09:15:13` | Instante do evento (aqui em ISO 8601 com `Z` de UTC). **O intervalo é sempre ~300 segundos** |
+| `uid` | `CxA1b2` … `CxA1b5` | Quatro conexões distintas, uma por batida |
+| `id.orig_h` / `id.orig_p` | `10.10.20.42` / `50122`, `50188`, `50231`, `50290` | Sempre a mesma estação; a porta efêmera muda a cada conexão, como é normal |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77` / `443` | Sempre o mesmo destino, em HTTPS — porta que quase ninguém bloqueia |
+| `proto` / `service` | `tcp` / `ssl` | Transporte e serviço identificado |
+| `duration` | `0.412`, `0.398`, `0.405`, `0.401` | Duração quase idêntica: conecta, troca o combinado e sai |
+| `orig_bytes` | `417`, `417`, `419`, `417` | Payload enviado — praticamente constante. É o "estou aqui, tem ordem para mim?" |
+| `resp_bytes` | `1290`, `1290`, `1290`, `1288` | Payload devolvido, também constante: a resposta "nada por agora" |
+| `conn_state` | `SF` | Todas normais. **Nenhuma linha, sozinha, levanta suspeita** — o padrão só aparece ao ler as quatro juntas |
+
+</details>
+
 Leia a coluna `ts`: 09:00:12, 09:05:14, 09:10:11, 09:15:13 — sempre ~300 segundos. E `orig_bytes` praticamente idêntico. Isso é máquina, não pessoa.
 
 Query de agregação pronta para achar periodicidade (SPL):
@@ -495,6 +556,19 @@ ts                   id.orig_h    id.resp_h   query                             
 2026-09-04T11:02:04Z 10.10.20.42  10.10.0.10  b7c2ne5rq0yt4hgw9lxk.tun.example.com                          TXT        NOERROR
 2026-09-04T11:02:04Z 10.10.20.42  10.10.0.10  z1p8dv6ma3ck7ju2wnqe.tun.example.com                          TXT        NOERROR
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas três linhas | O que significa |
+|---|---|---|
+| `ts` | `11:02:03`, `11:02:04`, `11:02:04` | Instante do evento. **Três consultas em dois segundos** — cadência de máquina |
+| `id.orig_h` | `10.10.20.42` | Sempre a mesma estação (a mesma do beacon do exemplo anterior) |
+| `id.resp_h` | `10.10.0.10` | O resolvedor DNS interno. Repare: o tunelamento **usa o DNS legítimo da empresa** como carteiro |
+| `query` | `k3j9x2mq7fp1a8vd0slz.tun.example.com` | O nome consultado. O rótulo de 20 caracteres aleatórios é o payload codificado; cada consulta carrega um pedaço do arquivo |
+| `qtype_name` | `TXT` | Registro de texto livre — o tipo que transporta mais bytes por resposta |
+| `rcode_name` | `NOERROR` | Todas resolveram, o que confirma que o domínio do atacante está no ar e a responder |
+
+</details>
 
 Três pistas em uma linha só: subdomínio longo e sem sentido, tipo `TXT` (que carrega texto livre, ideal para dados) e cadência altíssima do mesmo cliente para o mesmo domínio-pai.
 
@@ -592,16 +666,60 @@ Palo Alto, log TRAFFIC (formato CSV, campos separados por vírgula):
 Jan 14 03:12:44 fw-core-01 1,2026/01/14 03:12:44,001801021234,TRAFFIC,end,2560,2026/01/14 03:12:44,10.10.42.15,203.0.113.77,192.0.2.9,203.0.113.77,Permit-Web,jsilva,,ssl,vsys1,TRUST,UNTRUST,ae1.100,ae1.200,LogFwd,2026/01/14 03:12:44,88213,1,51422,443,42118,443,0x400070,tcp,allow,3567891204,3489201,78690,4102,2026/01/14 02:41:03,689,file-sharing,0
 ```
 
-Campos que interessam: `10.10.42.15` é a origem (`src`), `203.0.113.77` o destino (`dst`), `jsilva` o usuário autenticado, `443` a porta de destino, `bytes_sent = 3489201... ` — na posição de bytes a leitura correta é **bytes total 3567891204**, **bytes enviados 3489201xx**, **bytes recebidos 78690**. A categoria `file-sharing` fecha o quadro: quase 3,5 GB subindo para um site de compartilhamento.
+<details><summary>Ver legenda</summary>
 
-Zeek, `conn.log` (campos separados por TAB):
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1 | *(cabeçalho syslog)* | `Jan 14 03:12:44 fw-core-01` | **Não é campo do CSV** — é o cabeçalho que o syslog acrescenta. O `1` no fim já é o primeiro campo reservado |
+| 2 / 7 | Receive / Generated Time | `2026/01/14 03:12:44` | **03h12 da manhã** — o horário é parte do achado |
+| 3 | Serial Number | `001801021234` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 6, 39 | — | `2560`, `0` | Reservados pelo fabricante |
+| 8 / 9 | Source / Destination Address | `10.10.42.15` / `203.0.113.77` | Origem interna e destino externo |
+| 10 / 11 | NAT Source / Destination IP | `192.0.2.9` / `203.0.113.77` | Endereço público de saída e destino |
+| 12 | Rule Name | `Permit-Web` | A regra que permitiu |
+| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
+| 17 / 18 | Source / Destination Zone | `TRUST` / `UNTRUST` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ae1.100` / `ae1.200` | Subinterfaces de *port-channel* |
+| 21 / 22 | Log Action / — | `LogFwd` / `2026/01/14 03:12:44` | Perfil de log e campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `88213` / `1` | Sessão e contagem |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | Porta efêmera e HTTPS |
+| 27 / 28 | NAT Source / Destination Port | `42118` / `443` | Portas após tradução |
+| 29 | Flags | `0x400070` | Bits da sessão — valor diferente dos outros exemplos |
+| 30 / 31 | Protocol / Action | `tcp` / `allow` | Protocolo e veredito |
+| 32 | Bytes | `3567891204` | Total: **3,5 GB** |
+| 33 / 34 | Bytes Sent / Received | `3489201` / `78690` | Volume em cada direção. **Atenção à inconsistência aritmética do exemplo**: 32 deveria ser a soma de 33 e 34. O ponto didático é a *proporção* — muito a subir, quase nada a descer |
+| 35 | Packets | `4102` | Total de pacotes |
+| 36 / 37 | Start Time / Elapsed | `2026/01/14 02:41:03` / `689` | Início e duração: **11 minutos de sessão** |
+| 38 | Category | `file-sharing` | Categoria do destino: **compartilhamento de arquivos**. Junto com o volume, fecha o caso |
+
+</details>
+
+
+Zeek, `conn.log` (TSV — colunas alinhadas aqui para leitura):
 
 ```
-#fields ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	conn_state
-1768360364.221	CxT9kL2aBv1	10.10.42.15	51422	203.0.113.77	443	tcp	ssl	1842.550	3489201664	78690	SF
+#fields ts      uid          id.orig_h    id.orig_p  id.resp_h     id.resp_p  proto  service  duration  orig_bytes  resp_bytes  conn_state
+1768360364.221  CxT9kL2aBv1  10.10.42.15  51422      203.0.113.77  443        tcp    ssl      1842.550  3489201664  78690       SF
 ```
 
-`orig_bytes` = bytes que o cliente enviou; `resp_bytes` = bytes que o servidor devolveu. Aqui a razão é 44.340 para 1. Isso não é navegação: é upload.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1768360364.221` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CxT9kL2aBv1` | Identificador único da conexão |
+| `id.orig_h` / `id.orig_p` | `10.10.42.15` / `51422` | A estação de origem e sua porta efêmera |
+| `id.resp_h` / `id.resp_p` | `203.0.113.77` / `443` | Destino externo em HTTPS |
+| `proto` / `service` | `tcp` / `ssl` | Transporte e serviço identificado |
+| `duration` | `1842.550` | Duração: **30 minutos com a conexão aberta**, sem interrupção |
+| `orig_bytes` | `3489201664` | Payload **enviado** pela estação: 3,5 GB subindo |
+| `resp_bytes` | `78690` | Payload devolvido: 78 KB. A razão é de **44.340 para 1** — isso não é navegação, é upload |
+| `conn_state` | `SF` | Conexão normal e encerrada limpa. O desfecho é irrelevante: o volume e a direção é que contam |
+
+</details>
+
 
 Consulta SPL (Splunk) para achar os maiores exportadores do dia:
 
@@ -695,6 +813,26 @@ Detailed Authentication Information:
   Authentication Package: NTLM
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `New Logon` | *(cabeçalho)* | *(cabeçalho de seção)* Os dados da sessão que acabou de ser criada |
+| `Account Name` | `admin.rodrigo` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Logon ID` | `0x3E7A91` | **Costura os eventos da mesma sessão**: o 4624 que a abre, os 5140 de acesso e o 4634 que a fecha trazem o mesmo valor |
+| `Network Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa os campos de origem na rede |
+| `Workstation Name` | `WKS-JSILVA` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.42.15` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `49877` | Porta de origem, efêmera |
+| `Detailed Authentication Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa os campos do pacote de autenticação |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+
+</details>
+
 `Logon Type: 3` = logon de rede. `Logon Process: NtLmSsp` com `Authentication Package: NTLM` em um domínio que usa Kerberos é o sinal de pass-the-hash. `Source Network Address` diz de qual máquina veio.
 
 Logo em seguida, no mesmo servidor:
@@ -703,6 +841,20 @@ Logo em seguida, no mesmo servidor:
 EventID=5140  Share Name: \\*\ADMIN$  Source Address: 10.10.42.15  Account Name: admin.rodrigo
 EventID=7045  Service Name: PSEXESVC  Service File Name: %SystemRoot%\PSEXESVC.exe  Service Type: user mode service  Start Type: demand start
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `5140` / `7045` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `5140` = acesso a **compartilhamento** de rede; `7045` = **serviço instalado** — é o rastro que PsExec e afins deixam |
+| `Share Name` | `\\*\ADMIN$` | O compartilhamento acedido. **`C$`, `ADMIN$` e `IPC$` são administrativos**, e não uso comum |
+| `Source Address` | `10.10.42.15` | IP de origem |
+| `Account Name` | `admin.rodrigo` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `PSEXESVC` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Service File Name` | `%SystemRoot%\PSEXESVC.exe` | Caminho do binario do servico. **PSEXESVC.exe em %SystemRoot% e a assinatura do PsExec** |
+| `Service Type` | `user mode service  Start Type: demand start` | Tipo do servico registado |
+
+</details>
 
 `ADMIN$` é o compartilhamento administrativo oculto. `PSEXESVC` é o serviço que o PsExec cria para executar comandos remotamente. Os dois juntos, na mesma janela de segundos, são movimento lateral com alta confiança.
 
@@ -779,6 +931,25 @@ Network Information:
 Logon Type: 3
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa o motivo da falha |
+| `Failure Reason` | `Unknown user name or bad password.` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Network Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa os campos de origem na rede |
+| `Workstation Name` | `-` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `198.51.100.42` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `44120` | Porta de origem, efêmera |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+
+</details>
+
 `0xC000006A` no Sub Status significa **senha incorreta com usuário válido** — pior que `0xC0000064` (usuário não existe), porque confirma que a conta é real.
 
 Kerberos:
@@ -791,11 +962,43 @@ EventID=4771  Kerberos pre-authentication failed.
   Failure Code: 0x18
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4771  Kerberos pre-authentication failed.` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:198.51.100.42` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Failure Code` | `0x18` | **Código de falha do Kerberos.** `0x18` = **senha errada** — é o código de falha mais comum em spraying |
+
+</details>
+
 FortiGate (formato chave=valor):
 
 ```
 date=2026-01-14 time=02:47:19 devname="fgt-edge-01" devid="FG100F1234567890" logid="0101039426" type="event" subtype="vpn" level="alert" action="ssl-login-fail" remip=198.51.100.42 user="maria.costa" reason="sslvpn_login_permission_denied" msg="SSL user failed to logged in"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-01-14` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `02:47:19` | Hora local do equipamento |
+| `devname` | `"fgt-edge-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F1234567890"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0101039426"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"event"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"vpn"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"alert"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `action` | `"ssl-login-fail"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `remip` | `198.51.100.42` | IP público **remoto** do outro lado do túnel — de onde o usuário ou o peer veio |
+| `user` | `"maria.costa"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `reason` | `"sslvpn_login_permission_denied"` | **O campo que resolve o caso**: por que falhou ou por que terminou |
+| `msg` | `"SSL user failed to logged in"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
 
 `remip` é o IP remoto, `user` a conta tentada, `action=ssl-login-fail` a falha.
 
@@ -853,6 +1056,18 @@ EventID=4625  Account Name: admin.rodrigo   Source Network Address: 192.0.2.55  
 EventID=4625  Account Name: svc_backup      Source Network Address: 192.0.2.55  Sub Status: 0xC000006A  Logon Type: 3
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `jsilva` / `maria.costa` / `admin.rodrigo` / `svc_backup` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Source Network Address` | `192.0.2.55` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+
+</details>
+
 Nenhuma conta chegou perto do bloqueio. O padrão só existe quando você agrupa por origem.
 
 ### A query de detecção
@@ -906,6 +1121,22 @@ EventID=4624  Logon Type: 3  Account Name: admin.rodrigo  Source Network Address
 EventID=5140  Share Name: \\*\ADMIN$  Source Address: 10.10.42.15  Account Name: admin.rodrigo
 EventID=7045  Service Name: PSEXESVC  Service File Name: %SystemRoot%\PSEXESVC.exe
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` / `5140` / `7045` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido**; `5140` = acesso a **compartilhamento** de rede; `7045` = **serviço instalado** — é o rastro que PsExec e afins deixam |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Account Name` | `admin.rodrigo` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Source Network Address` | `10.10.42.15` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Share Name` | `\\*\ADMIN$` | O compartilhamento acedido. **`C$`, `ADMIN$` e `IPC$` são administrativos**, e não uso comum |
+| `Source Address` | `10.10.42.15` | IP de origem |
+| `Service Name` | `PSEXESVC` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Service File Name` | `%SystemRoot%\PSEXESVC.exe` | Caminho do binario do servico. **PSEXESVC.exe em %SystemRoot% e a assinatura do PsExec** |
+
+</details>
 
 O que aconteceu? Qual técnica MITRE ATT&CK descreve isso e qual campo prova que a origem foi uma estação de usuário?
 
@@ -969,6 +1200,23 @@ DestinationIp: 203.0.113.88  DestinationPort: 443
 DestinationHostname: cdn-update.example.com
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `3 (Network connection detected)` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Image` | `C:\Program Files\FornecedorX\agent.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `User` | `NT AUTHORITY\SYSTEM` | Conta sob a qual o processo corre |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `Initiated` | `true` | `true` quando a conexão **partiu** desta máquina |
+| `SourceIp` | `10.10.42.31` | IP de origem da conexão |
+| `SourcePort` | `51204` | Porta de origem |
+| `DestinationIp` | `203.0.113.88` | IP de destino da conexão |
+| `DestinationPort` | `443` | Porta de destino |
+| `DestinationHostname` | `cdn-update.example.com` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
+
 **O que o N1 observa:** normal é o agente falar com o domínio oficial do fabricante. Suspeito é o mesmo binário falando com domínio recém-registrado, ou processo rodando como SYSTEM abrindo conexão para IP sem reputação. **Ação do N1:** confirmar se houve janela de atualização, verificar reputação do destino, checar se outras máquinas com o mesmo agente estão fazendo igual. Se sim, escale — vários hosts com o mesmo comportamento é o padrão clássico.
 
 ### Credential stuffing
@@ -985,6 +1233,27 @@ service="HTTPS" url="/api/v1/login" httpmethod="POST"
 agent="python-requests/2.31" msg="Rate limit threshold exceeded"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:12:44` | Hora local do equipamento |
+| `devname` | `"FGT-DMZ-01"` | Nome do equipamento que gerou o log |
+| `type` | `"utm"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"waf"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `action` | `"detected"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `srcip` | `198.51.100.204` | IP de origem |
+| `dstip` | `10.20.5.10` | IP de destino |
+| `dstport` | `443` | Porta de destino — é ela que aponta o serviço |
+| `service` | `"HTTPS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `url` | `"/api/v1/login"` | URL pedida |
+| `httpmethod` | `"POST"` | Método HTTP do pedido |
+| `agent` | `"python-requests/2.31"` | *User-agent* declarado pelo cliente. **Biblioteca ou ferramenta aqui, numa estação de usuário, é anomalia** |
+| `msg` | `"Rate limit threshold exceeded"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
+
 **Ação do N1:** listar os usuários que obtiveram sucesso (não só os que falharam), forçar reset e MFA nesses, e pedir bloqueio das faixas de origem.
 
 ### Cryptojacking
@@ -1000,6 +1269,22 @@ query=pool.mining-node.example.com  qtype_name=A  rcode_name=NOERROR
 answers=203.0.113.201  TTL=300
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756900123.441` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CqB3sX1kLmN` | Identificador único da conexão |
+| `id.orig_h` | `10.10.42.55` | Quem perguntou — o host que está minerando |
+| `id.resp_h` | `10.10.0.53` | O resolvedor interno que atendeu |
+| `query` | `pool.mining-node.example.com` | O nome consultado. **O próprio nome já entrega o caso**: `pool` é o vocabulário de mineração |
+| `qtype_name` | `A` | Registro de endereço IPv4 |
+| `rcode_name` | `NOERROR` | Resolveu com sucesso |
+| `answers` | `203.0.113.201` | O IP do pool — procure-o no `conn.log` para ver o volume e a duração da conexão |
+| `TTL` | `300` | Validade em cache, em segundos |
+
+</details>
+
 **Ação do N1:** isolar não é obrigatório, mas identifique o processo (Sysmon 1) e escale — cryptojacking em servidor quase sempre veio de exploração de vulnerabilidade exposta.
 
 ### DDoS (Distributed Denial of Service)
@@ -1014,6 +1299,28 @@ answers=203.0.113.201  TTL=300
 %ASA-6-302014: Teardown TCP connection 88421 for outside:198.51.100.7/44120
  to dmz:10.20.5.10/443 duration 0:00:00 bytes 0 TCP Reset-O
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `inbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88421` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:198.51.100.7/44120` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(198.51.100.7/44120)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `dmz:10.20.5.10/443` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(10.20.5.10/443)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| *message ID* (2ª linha) | `302014` | Conexão TCP encerrada. **Contar `302013` e `302014` como dois eventos duplica a mesma sessão** no relatório |
+| id da conexão | `88421` | O **mesmo** número da 1ª linha: é assim que se sabe que falam da mesma conexão |
+| `duration` | `0:00:00` | Quanto tempo a conexão viveu, em `h:mm:ss` |
+| `bytes` | `0` | Total transferido na sessão. **Só existe no `302014`** — quando o `302013` é escrito, ainda não há o que contar |
+| motivo | `TCP Reset-O` | Como terminou: `TCP FINs` é fim limpo nos dois sentidos; `TCP Reset-O` é RST vindo de fora (**O** de *Outside*); `TCP Reset-I` de dentro; `SYN Timeout` nunca completou; `Deny Terminate` a política cortou |
+| — | — | **`duration 0:00:00`, `bytes 0` e `Reset-O` juntos**: a sessão foi criada e derrubada por um RST vindo de fora, sem transferir nada. Repetido contra muitos IPs, é varredura; o `302013` sozinho pareceria conexão bem-sucedida |
+
+</details>
 
 Repare em `duration 0:00:00` e `bytes 0`: sessão criada e derrubada sem transferir nada — assinatura típica de flood. **Ação do N1:** confirmar impacto real (o serviço está lento ou fora?), acionar o provedor de mitigação e avisar o N2 imediatamente. DDoS é evento de disponibilidade, tem SLA curto.
 
@@ -1041,6 +1348,18 @@ Image: C:\Windows\System32\cmd.exe
 User: IIS APPPOOL\DefaultAppPool
 CommandLine: (comando de reconhecimento de sistema — nao reproduzido)
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `1 (Process Create)` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `ParentImage` | `C:\Windows\System32\inetsrv\w3wp.exe` | Caminho do processo **pai**. **É aqui que o Sysmon brilha**: Word ou Excel como pai de `powershell.exe` é sinal forte por si só |
+| `Image` | `C:\Windows\System32\cmd.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `User` | `IIS APPPOOL\DefaultAppPool` | Conta sob a qual o processo corre |
+| `CommandLine` | `(comando de reconhecimento de sistema — nao reproduzido)` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+
+</details>
 
 **O que o N1 observa:** WAF em `action=reset-both` = bloqueado, ruído comum de varredura da internet — anote e siga. Mas se depois do alerta de SQLi aparecer o Sysmon 1 acima, o cenário mudou: houve execução no servidor. **Erro comum de analista júnior:** fechar o alerta de WAF como falso positivo só porque foi bloqueado, sem checar se algum request semelhante passou com HTTP 200. **Ação do N1:** escalar imediatamente qualquer processo filho de servidor web.
 

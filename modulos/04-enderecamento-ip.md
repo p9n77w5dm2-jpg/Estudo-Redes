@@ -24,7 +24,23 @@ Todo alerta que chega na sua fila tem, no mínimo, dois endereços IP: quem falo
 %ASA-6-302013: Built outbound TCP connection 1284471 for OUTSIDE:203.0.113.45/443 (203.0.113.45/443) to INSIDE:10.10.20.45/51422 (198.51.100.7/51422)
 ```
 
-Campos: `%ASA-6-302013` é a severidade 6 (informational) e o ID da mensagem "conexão TCP criada"; `outbound` é o sentido (de dentro para fora); `1284471` é o identificador da conexão; `OUTSIDE:203.0.113.45/443` é o destino (IP e porta 443, HTTPS); `INSIDE:10.10.20.45/51422` é a origem interna com porta alta aleatória; o `198.51.100.7` entre parênteses é o IP público depois da tradução NAT.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `1284471` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `OUTSIDE:203.0.113.45/443` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.45/443)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `INSIDE:10.10.20.45/51422` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(198.51.100.7/51422)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | Os nomes de interface vêm em **caixa alta** neste exemplo (`OUTSIDE`, `INSIDE`). São nomes livres, escolhidos por quem configurou: não confie na caixa nem no nome para deduzir o sentido — confie na palavra `outbound`/`inbound` |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: um host interno abrindo 443 para um destino externo. Suspeito: um host interno abrindo centenas de conexões por minuto para IPs externos diferentes, ou uma origem que deveria ser só de rede interna (um servidor de banco de dados) falando com a internet.
 
@@ -98,6 +114,37 @@ Um endereço IPv4 tem 32 bits divididos em 4 octetos separados por ponto. Cada o
 date=2026-09-03 time=09:12:44 devname="FGT-BORDA-01" devid="FG100F0000000001" logid="0000000013" type="traffic" subtype="forward" level="notice" srcip=10.10.20.45 srcport=51422 srcintf="port3" dstip=203.0.113.45 dstport=443 dstintf="port1" action="accept" policyid=17 service="HTTPS" trandisp="snat" transip=198.51.100.7 transport=51422 duration=32 sentbyte=8421 rcvdbyte=15302
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:12:44` | Hora local do equipamento |
+| `devname` | `"FGT-BORDA-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0000000013"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"notice"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.45` | IP de origem |
+| `srcport` | `51422` | Porta de origem, efêmera e sorteada pelo cliente |
+| `srcintf` | `"port3"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstip` | `203.0.113.45` | IP de destino |
+| `dstport` | `443` | Porta de destino — é ela que aponta o serviço |
+| `dstintf` | `"port1"` | Interface por onde o tráfego **saiu** |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `17` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"HTTPS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `trandisp` | `"snat"` | Tipo de tradução aplicada: `snat` na origem, `dnat` no destino, `noop` nenhuma |
+| `transip` | `198.51.100.7` | IP após tradução — **o endereço com que a sessão saiu** |
+| `transport` | `51422` | Porta após tradução. Cuidado: **não é "protocolo de transporte"**, é a porta traduzida |
+| `duration` | `32` | Duração da sessão em **segundos** |
+| `sentbyte` | `8421` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `15302` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| — | — | `trandisp="snat"` declara explicitamente que houve tradução na origem, e `transip`/`transport` dão o resultado. Sem o `trandisp`, um `transip` igual ao `srcip` seria ambíguo |
+
+</details>
+
 Campos: `srcip`/`srcport` origem, `dstip`/`dstport` destino, `action=accept` a política permitiu, `policyid=17` qual regra decidiu, `trandisp=snat` houve tradução de origem, `transip` o IP público resultante, `sentbyte`/`rcvdbyte` volume trafegado.
 
 **O que o SOC N1 observa.** Normal: `srcip` privado, `dstip` público, porta 443. Suspeito: `srcip` público chegando com destino privado sem passar por NAT/VPN (possível spoofing ou regra mal escrita); tráfego saindo com `dstip` em 10/8 na interface de internet; host com IP APIPA gerando alertas de autenticação falhando.
@@ -118,6 +165,23 @@ DestinationIp: 203.0.113.200
 DestinationPort: 8443
 DestinationHostname: cdn.empresa-exemplo.com.br
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `3` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `3` = Sysmon **Network Connect** |
+| `UtcTime` | `2026-09-03 12:04:51.221` | Instante do evento **em UTC**, o que dispensa converter fuso ao correlacionar |
+| `Image` | `C:\Users\jsilva\AppData\Local\Temp\updater.exe` | Caminho do executável (nomenclatura do Sysmon) |
+| `User` | `CORP\jsilva` | Conta sob a qual o processo corre |
+| `Protocol` | `tcp` | Protocolo de transporte da conexão |
+| `SourceIp` | `10.10.20.45` | IP de origem da conexão |
+| `SourcePort` | `49871` | Porta de origem |
+| `DestinationIp` | `203.0.113.200` | IP de destino da conexão |
+| `DestinationPort` | `8443` | Porta de destino |
+| `DestinationHostname` | `cdn.empresa-exemplo.com.br` | Nome do host de destino, quando o Sysmon consegue resolvê-lo |
+
+</details>
 
 Campos: `Image` é o executável que abriu a conexão; `User` a conta; `DestinationPort: 8443` é HTTPS alternativo. Binário em `AppData\Local\Temp` falando com a internet é sinal clássico de execução suspeita (MITRE ATT&CK T1071 — Application Layer Protocol).
 
@@ -165,7 +229,34 @@ A conta geral: hosts utilizáveis = 2^(32 − prefixo) − 2, porque um endereç
 1,2026/09/03 09:31:07,001801010001,TRAFFIC,end,2561,2026/09/03 09:31:07,10.10.20.45,203.0.113.45,198.51.100.7,203.0.113.45,Regra-Saida-Corp,corp\jsilva,,ssl,vsys1,Trust,Untrust,ae1.20,ae1.10,LOG-Default,2026/09/03 09:31:07,74213,1,51422,443,42311,443,0x400053,tcp,allow,18422,7311,11111,42
 ```
 
-Campos na ordem: tipo `TRAFFIC`, subtipo `end` (sessão encerrada), IP de origem, IP de destino, origem após NAT, destino após NAT, nome da regra, usuário `corp\jsilva`, aplicação `ssl`, zonas `Trust`/`Untrust`, portas de origem e destino, protocolo `tcp` e ação `allow`.
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1, 6 | — | `1`, `2561` | Reservados pelo fabricante |
+| 2 / 7 | Receive / Generated Time | `2026/09/03 09:31:07` | Quando o firewall recebeu e quando o evento ocorreu |
+| 3 | Serial Number | `001801010001` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 8 | Source Address | `10.10.20.45` | **Endereço privado (RFC 1918)** — não trafega na Internet |
+| 9 | Destination Address | `203.0.113.45` | Destino público |
+| 10 | NAT Source IP | `198.51.100.7` | **O endereço público que substituiu o privado na saída.** Este par de linhas (8 e 10) é a tradução inteira, visível de uma vez |
+| 11 | NAT Destination IP | `203.0.113.45` | Destino após NAT; igual, porque não houve tradução no destino |
+| 12 | Rule Name | `Regra-Saida-Corp` | A regra que permitiu |
+| 13 / 14 | Source / Destination User | `corp\jsilva` / *(vazio)* | Usuário resolvido |
+| 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
+| 17 / 18 | Source / Destination Zone | `Trust` / `Untrust` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ae1.20` / `ae1.10` | Subinterfaces de *port-channel*, uma por sub-rede |
+| 21 / 22 | Log Action / — | `LOG-Default` / `2026/09/03 09:31:07` | Perfil de log e um campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `74213` / `1` | Identificador da sessão e quantas foram condensadas |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | Porta efêmera de origem e porta de destino |
+| 27 / 28 | NAT Source / Destination Port | `42311` / `443` | Portas após tradução. **Com CGNAT, é a porta que distingue um assinante do outro** |
+| 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits da sessão, protocolo e veredito |
+| 32 | Bytes | `18422` | Total nos dois sentidos |
+| 33 / 34 | Bytes Sent / Received | `7311` / `11111` | Volume em cada direção |
+| 35 | Packets | `42` | Total de pacotes |
+
+</details>
+
 
 **Consultas úteis.** SPL (Splunk), para achar tráfego privado saindo pela interface de internet:
 
@@ -208,6 +299,27 @@ DeviceNetworkInfo
 ```
 date=2026-09-03 time=14:07:19 devname="FGT-BORDA-01" type="traffic" subtype="forward" level="warning" srcip=10.10.30.10 srcport=44120 dstip=10.10.20.45 dstport=445 action="deny" policyid=0 service="SMB" msg="no matching policy"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:07:19` | Hora local do equipamento |
+| `devname` | `"FGT-BORDA-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"warning"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.30.10` | IP de origem |
+| `srcport` | `44120` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstip` | `10.10.20.45` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `0` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"SMB"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `msg` | `"no matching policy"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
 
 5. Um servidor com IP `10.10.20.130/25` não consegue falar com `10.10.20.10`. A rede física está boa e o cabo está conectado. Qual é a causa mais provável e como você confirma?
 
@@ -323,7 +435,22 @@ Saber a fronteira do bloco é o que permite dizer "esse IP é da minha rede" ou 
 (203.0.113.45/443) to inside:10.10.30.66/51224 (198.51.100.7/51224)
 ```
 
-Campos: `302013` = conexão TCP criada; `outside`/`inside` = zonas do firewall; `10.10.30.66` é o host interno; `198.51.100.7` é o IP público após NAT (Network Address Translation, tradução de endereços). O host .66 está dentro de 10.10.30.64/26 — coerente com a VLAN de trabalho.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `84512` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.45/443` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.45/443)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.30.66/51224` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(198.51.100.7/51224)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+
+</details>
+
 
 ```
 # FortiGate - key=value
@@ -331,6 +458,28 @@ date=2026-09-03 time=09:14:02 devname="FGT-CORP-01" type="traffic" subtype="forw
 srcip=10.10.30.127 dstip=10.10.30.255 srcport=138 dstport=138 proto=17
 service="NETBIOS" action="deny" policyid=12 sentbyte=486 msg="violation"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:14:02` | Hora local do equipamento |
+| `devname` | `"FGT-CORP-01"` | Nome do equipamento que gerou o log |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `srcip` | `10.10.30.127` | IP de origem |
+| `dstip` | `10.10.30.255` | IP de destino |
+| `srcport` | `138` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstport` | `138` | Porta de destino — é ela que aponta o serviço |
+| `proto` | `17` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `service` | `"NETBIOS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `sentbyte` | `486` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `msg` | `"violation"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
 
 `srcip=10.10.30.127` é o **broadcast** do bloco /26 — endereço que nunca deveria ser origem de tráfego. `dstip=10.10.30.255` é broadcast do /24. Origem em broadcast é sinal de host mal configurado ou de tentativa de amplificação.
 
@@ -426,6 +575,22 @@ CommonSecurityLog
 2026-09-03 10:02:41,TRAFFIC,end,10.10.30.65,10.10.30.127,any,tcp,445,deny,VLAN-TI,VLAN-TI
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição em cada linha | Campo | Valores | O que significa |
+|---|---|---|---|
+| 1 | Receive Time | `2026-09-03 10:02:41` nas duas | **O mesmo segundo nas duas linhas** — não é alguém a tentar duas vezes, é uma varredura |
+| 2 / 3 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão |
+| 4 | Source Address | `10.10.30.65` | A mesma origem nas duas |
+| 5 | Destination Address | `10.10.30.126` / `10.10.30.127` | **Destinos consecutivos** — a ferramenta está percorrendo a faixa host a host |
+| 6 | Application | `any` | App-ID **não identificou nada**: a sessão foi barrada antes de haver conteúdo para inspecionar |
+| 7 / 8 | Protocol / Destination Port | `tcp` / `445` | SMB, a porta de movimento lateral por excelência |
+| 9 | Action | `deny` | Barrada pela política |
+| 10 / 11 | Source / Destination Zone | `VLAN-TI` / `VLAN-TI` | **Origem e destino na mesma zona.** É tráfego *interno* ao segmento, que só aparece no log porque a política obriga a passar pelo firewall |
+| — | — | — | Recorte de 11 campos por linha; o formato completo tem mais de 46 |
+
+</details>
+
 <details><summary>Ver gabarito</summary>
 
 **1.** Máscara /27 = 255.255.255.224. Binário: 130 = `10000010`, máscara `11100000`, `AND` → `10000000` = 128. Atalho: 256 − 224 = bloco **32** → 0, 32, 64, 96, **128**, 160. Rede **172.16.45.128**, broadcast **172.16.45.159**, hosts **.129 a .158** (30 hosts).
@@ -505,6 +670,24 @@ Isso importa para o SOC: com SLAAC puro **não há log de lease** para dizer "à
 1756900455.902  CzQ9k2  10.10.20.90  51222  203.0.113.44  3544  udp  -  62.10  8140  10420  SF
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (IPv6 nativo) / 2ª linha (Teredo) | O que significa |
+|---|---|---|
+| `ts` | `1756900412.118` / `1756900455.902` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CxT4a1` / `CzQ9k2` | Identificador único da conexão |
+| `id.orig_h` | `fd00:10:10:20::5a` / `10.10.20.90` | Origem. A primeira é um endereço IPv6 **ULA** (*Unique Local Address*, `fd00::/8`) — o equivalente ao RFC1918 do IPv4 |
+| `id.orig_p` | `49731` / `51222` | Porta de origem, efêmera |
+| `id.resp_h` | `2001:db8:beef::10` / `203.0.113.44` | Destino. `2001:db8::/32` é a faixa IPv6 de documentação; num ambiente real seria um endereço **global**, ou seja, tráfego que saiu para a Internet |
+| `id.resp_p` | `443` / `3544` | Porta de destino. **3544/UDP é Teredo**: IPv6 encapsulado dentro de IPv4 para atravessar NAT |
+| `proto` | `tcp` / `udp` | Protocolo de transporte |
+| `service` | `ssl` / `-` | Serviço identificado. O `-` da 2ª linha é o ponto: o Zeek **não reconheceu** o que anda dentro do túnel |
+| `duration` | `312.44` / `62.10` | Duração em segundos |
+| `orig_bytes` / `resp_bytes` | `184320`/`9822144` e `8140`/`10420` | Payload em cada direção. Na 1ª linha, 9,8 MB descendo por IPv6 sem passar pelas regras feitas para IPv4 |
+| `conn_state` | `SF` | Conexão completa e encerrada normalmente nos dois casos — o problema não é o desfecho, é o caminho |
+
+</details>
+
 A primeira linha é tráfego IPv6 interno (ULA `fd00::/8`) para um destino global — saiu para a Internet. A segunda é UDP/3544: **Teredo**, IPv6 tunelado para fora.
 
 Suricata EVE JSON de um Router Advertisement suspeito:
@@ -580,6 +763,33 @@ Regra de leitura rápida para o plantão: **10.10.x** = matriz; **10.20/30/40** 
 ```
 date=2026-09-03 time=15:04:22 devname="FGT-MATRIZ-01" devid="FG100F0000000001" type="traffic" subtype="forward" level="warning" srcip=10.10.20.118 srcport=51544 srcintf="vlan20-users" dstip=10.10.10.25 dstport=445 dstintf="vlan10-srv" policyid=42 action="deny" service="SMB" sessionid=884120 srccountry="Reserved" user="jsilva"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `15:04:22` | Hora local do equipamento |
+| `devname` | `"FGT-MATRIZ-01"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"warning"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.118` | IP de origem |
+| `srcport` | `51544` | Porta de origem, efêmera e sorteada pelo cliente |
+| `srcintf` | `"vlan20-users"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstip` | `10.10.10.25` | IP de destino |
+| `dstport` | `445` | Porta de destino — é ela que aponta o serviço |
+| `dstintf` | `"vlan10-srv"` | Interface por onde o tráfego **saiu** |
+| `policyid` | `42` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `action` | `"deny"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `service` | `"SMB"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `sessionid` | `884120` | Identificador da sessão na tabela de estado — casa o início e o fim da mesma conexão |
+| `srccountry` | `"Reserved"` | País de origem por geolocalização. Para IP privado vem `Reserved` |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+
+</details>
+
 4. Verdadeiro ou falso positivo? O alerta "host desconhecido comunicando na rede" disparou para `fe80::a2b:ff:fe3c:4d5e` conversando com `ff02::1` a partir do MAC do firewall de borda.
 5. Um desktop da VLAN de usuários (`10.10.20.77`) mantém sessão UDP para `198.51.100.9:3544` por 40 minutos, 2 MB enviados. Qual é o próximo passo da investigação?
 

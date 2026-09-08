@@ -67,7 +67,23 @@ Squid `access.log` (formato nativo, campos separados por espaço):
 1756900430.882    412 10.10.20.45 TCP_DENIED/403 3921 GET http://downloads.example.com/setup.exe maria.costa HIER_NONE/- text/html
 ```
 
-Leitura campo a campo: *timestamp* Unix; tempo de resposta em milissegundos; IP do cliente; **código de resultado/status HTTP** (`TCP_TUNNEL/200` = túnel HTTPS estabelecido; `TCP_DENIED/403` = bloqueado pela política); bytes entregues ao cliente; método e URL; **usuário autenticado**; hierarquia e IP do servidor de origem; tipo de conteúdo.
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (túnel HTTPS) / 2ª linha (bloqueio) | O que significa |
+|---|---|---|
+| *timestamp* | `1756900412.317` / `1756900430.882` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| duração | `1183` / `412` | Milissegundos. No túnel, mede o tempo em que a conexão ficou aberta |
+| cliente | `10.10.20.45` | O IP de origem em ambos |
+| resultado/status | `TCP_TUNNEL/200` / `TCP_DENIED/403` | `TCP_TUNNEL` = túnel HTTPS estabelecido, **e a partir daí o proxy só conta bytes**; `TCP_DENIED` = a política barrou antes de sair |
+| bytes | `84213` / `3921` | 84 KB atravessaram o túnel; no bloqueio, o tamanho da página de erro |
+| método | `CONNECT` / `GET` | `CONNECT` pede o túnel para HTTPS; `GET` é HTTP em claro |
+| URL | `arquivos.empresa-exemplo.com.br:443` / `http://downloads.example.com/setup.exe` | No `CONNECT` só há host e porta — **o caminho e o conteúdo vão cifrados**. No `GET` bloqueado dá para ver o arquivo pretendido |
+| usuário | `jsilva` / `maria.costa` | Conta autenticada no proxy — o que permite investigar por pessoa, e não por IP |
+| hierarquia/destino | `HIER_DIRECT/203.0.113.44` / `HIER_NONE/-` | `HIER_NONE` confirma que o pedido bloqueado **não chegou a sair** |
+| tipo de conteúdo | `-` / `text/html` | Vazio no túnel: o proxy não sabe o que passou lá dentro |
+
+</details>
+
 
 Zscaler NSS (formato web, chave=valor simplificado):
 
@@ -151,6 +167,22 @@ O navegador só aceita o passo 1 porque o certificado raiz da CA interna foi ins
 1756901355.907  Cq8Lm4Tb1Zd7  10.10.20.61  49877  198.51.100.90  443  TLSv12  TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256  -  T  CN=R11,O=Lets Encrypt,C=US
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | 1ª linha (inspecionada) / 2ª linha (não inspecionada) | O que significa |
+|---|---|---|
+| `ts` | `1756901301.442` / `1756901355.907` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CxTk9r2Yh8Qa` / `Cq8Lm4Tb1Zd7` | Identificador único de cada conexão |
+| `id.orig_h` / `id.orig_p` | `10.10.20.45:51422` / `10.10.20.61:49877` | Cliente e porta efêmera |
+| `id.resp_h` / `id.resp_p` | `203.0.113.44:443` / `198.51.100.90:443` | Destino e porta |
+| `version` | `TLSv13` / `TLSv12` | Versão do TLS negociada |
+| `cipher` | `TLS_AES_256_GCM_SHA384` / `TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256` | Conjunto de cifras acordado |
+| `server_name` | `www.example.com` / `-` | O SNI. Vazio na 2ª: sem nome, só o IP |
+| `established` | `T` | O handshake completou nas duas |
+| `issuer` | `CN=Proxy-Corp-CA,O=Empresa Exemplo` / `CN=R11,O=Lets Encrypt` | **O campo que denuncia a inspeção.** Emissor interno significa que o proxy quebrou e refez o TLS, logo o SOC vê o conteúdo. Emissor público significa que a sessão passou intacta — e aí só há metadados |
+
+</details>
+
 Na primeira linha o emissor é a CA interna: a sessão **foi inspecionada**. Na segunda o emissor é externo e o `server_name` (SNI, *Server Name Indication*) está vazio — sessão **não inspecionada e sem nome de destino**, exatamente o perfil que merece um segundo olhar.
 
 FortiGate registrando um bloqueio dentro de sessão inspecionada:
@@ -158,6 +190,32 @@ FortiGate registrando um bloqueio dentro de sessão inspecionada:
 ```
 date=2026-09-03 time=14:11:58 devname="FGT-BORDA-01" type="utm" subtype="webfilter" level="warning" srcip=10.10.20.45 dstip=203.0.113.77 srcport=52310 dstport=443 policyid=12 user="jsilva" service="HTTPS" hostname="cdn-update.example.com" url="/pkg/agent.bin" action="blocked" catdesc="Newly Observed Domain" ssl-inspection="deep-inspection" msg="URL belongs to a denied category"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `14:11:58` | Hora local do equipamento |
+| `devname` | `"FGT-BORDA-01"` | Nome do equipamento que gerou o log |
+| `type` | `"utm"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"webfilter"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"warning"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.45` | IP de origem |
+| `dstip` | `203.0.113.77` | IP de destino |
+| `srcport` | `52310` | Porta de origem, efêmera e sorteada pelo cliente |
+| `dstport` | `443` | Porta de destino — é ela que aponta o serviço |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `service` | `"HTTPS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `hostname` | `"cdn-update.example.com"` | Nome do host pedido, extraído do tráfego web |
+| `url` | `"/pkg/agent.bin"` | URL pedida |
+| `action` | `"blocked"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `catdesc` | `"Newly Observed Domain"` | Categoria de conteúdo atribuída ao destino |
+| `inspection` | `"deep-inspection"` | Modo de inspeção aplicado (`flow` ou `proxy`) |
+| `msg` | `"URL belongs to a denied category"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+
+</details>
 
 Campos-chave: `user` (identidade), `hostname` + `url` (só visíveis por causa da inspeção), `catdesc` (categoria) e `ssl-inspection=deep-inspection` (confirma que houve abertura do tráfego; `certificate-inspection` significa que só o SNI/certificado foi lido, sem abrir o conteúdo).
 
@@ -298,6 +356,8 @@ action=block dlp_profile=CPF-Cartao dlp_incident_id=88213
 category=Cloud Storage ccl=medium os=Windows 11 bytes=2148992
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado |
 |---|---|
 | `access_method` | `Client` (inline pelo agente), `Tunnel` (IPsec/GRE) ou `API` (retroativo). |
@@ -306,6 +366,8 @@ category=Cloud Storage ccl=medium os=Windows 11 bytes=2148992
 | `ccl` | Cloud Confidence Level — nota de risco da aplicação (poor a excellent). |
 | `dlp_profile` | Qual regra de dado sensível disparou. |
 | `action` | allow, block, alert, useralert (usuário pôde justificar e seguir). |
+
+</details>
 
 **O que o SOC N1 observa.** Normal: uploads para o storage corporativo aprovado, `action=allow`. Suspeito: mesmo usuário fazendo `activity=Upload` para uma aplicação com `ccl=poor` fora do horário, ou uma sequência de `Download` em massa do SaaS corporativo seguida de `Upload` para storage pessoal — padrão de exfiltração (MITRE **T1567.002**, Exfiltration to Cloud Storage).
 
@@ -335,6 +397,8 @@ reason=Malware_Detected threatname=W32.Example.Trojan malwareclass=Virus
 riskscore=92 reqsize=812 respsize=0 serverip=198.51.100.77 clientip=10.20.5.61
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado |
 |---|---|
 | `location` | De onde o tráfego entrou (GRE/IPsec da filial ou Road Warrior via agente). |
@@ -343,6 +407,8 @@ riskscore=92 reqsize=812 respsize=0 serverip=198.51.100.77 clientip=10.20.5.61
 | `reason` | Por que o veredito: política, malware, DLP, sandbox. |
 | `riskscore` | 0–100; acima de 80 trate como prioridade. |
 | `respsize` | Bytes de resposta. `0` num bloqueio confirma que nada foi entregue. |
+
+</details>
 
 **O que o SOC N1 observa.** `action=blocked` com `respsize=0` é um bloqueio bem-sucedido: o payload não chegou. Se vier `action=allowed` para `.exe` de categoria Shareware, escale — verifique se o arquivo executou no endpoint (Sysmon Event ID 1).
 
@@ -358,12 +424,16 @@ Produto tradicional, on-premises, ainda muito presente em banco e indústria. Gr
 2026-09-03 16:11:44 10.30.7.19 admin.rodrigo paste.example.net /raw/a91f 403 TCP_DENIED 0 "Suspicious;Uncategorized"
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado |
 |---|---|
 | `c-ip` / `cs-username` | IP e usuário autenticado no proxy. |
 | `sc-status` | Código HTTP devolvido ao cliente (`403` = negado pelo proxy). |
 | `s-action` | Decisão do proxy: `TCP_HIT` (cache), `TCP_NC_MISS` (buscou na origem), `TCP_DENIED` (bloqueou), `TCP_TUNNELED` (CONNECT sem inspeção). |
 | `cs-categories` | Categoria WebPulse; `Uncategorized` em domínio novo é forte indício de C2. |
+
+</details>
 
 **Erro comum de júnior:** somar bytes de linhas `TCP_HIT` para medir exfiltração. `TCP_HIT` foi servido do cache local — não saiu nada para a internet.
 
@@ -421,6 +491,8 @@ O Squid é um proxy livre, muito usado em laboratório e em ambientes menores. O
 1725362533.905   1180 10.10.20.45 TCP_MISS/200 4194304 GET http://cdn-update.example.com/setup.exe jsilva DIRECT/198.51.100.77 application/octet-stream
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Posição | Campo | Significado |
 |---|---|---|
 | 1 | `1725362410.482` | Data em epoch Unix (segundos desde 1970) com milissegundos |
@@ -433,6 +505,8 @@ O Squid é um proxy livre, muito usado em laboratório e em ambientes menores. O
 | 8 | `jsilva` | Usuário autenticado no proxy |
 | 9 | `DIRECT/203.0.113.20` | Como o Squid buscou o objeto e o IP de destino real |
 | 10 | `text/html` | Content-Type devolvido |
+
+</details>
 
 Os códigos de cache mais comuns: `TCP_MISS` (não estava em cache, buscou na internet), `TCP_HIT` (serviu do cache), `TCP_DENIED` (o proxy recusou antes de sair), `TCP_TUNNEL` (CONNECT de HTTPS repassado).
 
@@ -450,6 +524,8 @@ ELFF significa *Extended Log File Format* (formato estendido de arquivo de log).
 2026-09-03 14:22:55 10.10.31.90 maria.costa apostas.example.com / TCP_DENIED 403 PROXIED "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" 1204 640 "Apostas"
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo ELFF | Leitura em português |
 |---|---|
 | `c-ip` | IP do cliente |
@@ -461,6 +537,8 @@ ELFF significa *Extended Log File Format* (formato estendido de arquivo de log).
 | `cs(User-Agent)` | identificação do navegador ou ferramenta |
 | `sc-bytes` / `cs-bytes` | bytes baixados / bytes enviados |
 | `cs-categories` | categoria atribuída ao site |
+
+</details>
 
 ### Zscaler NSS
 
@@ -480,6 +558,8 @@ O Netskope junta proxy web com CASB (*Cloud Access Security Broker*, corretor de
 {"timestamp":"2026-09-03T14:45:19Z","user":"maria.costa@empresa-exemplo.com.br","srcip":"10.10.31.90","dstip":"203.0.113.150","app":"Google Drive Pessoal","appcategory":"Cloud Storage","activity":"Upload","object":"base_clientes.xlsx","object_size":48211456,"action":"alert","policy":"DLP-Dados-Clientes","dlp_rule":"PII-BR-CPF","dlp_incident_id":"INC-77120","ccl":"medium","user_agent":"Mozilla/5.0"}
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Para que serve na investigação |
 |---|---|
 | `app` / `appcategory` | qual serviço em nuvem e de que tipo |
@@ -488,6 +568,8 @@ O Netskope junta proxy web com CASB (*Cloud Access Security Broker*, corretor de
 | `action` | `allow`, `alert`, `block`, `useralert` |
 | `dlp_rule` | qual regra de DLP disparou (aqui, padrão de CPF) |
 | `ccl` | *Cloud Confidence Level* — reputação da aplicação em nuvem |
+
+</details>
 
 ## Seis cenários de investigação
 
@@ -543,6 +625,23 @@ NetskopeAlerts_CL
 1725367014.880 11 10.10.20.45 TCP_DENIED/403 3894 GET http://tunel-web.example.com/ jsilva NONE/- text/html
 1725367029.640 10 10.10.20.45 TCP_DENIED/403 3894 GET http://anon-browse.example.com/ jsilva NONE/- text/html
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor nas três linhas | O que significa |
+|---|---|---|
+| *timestamp* | `1725367001.220`, `1725367014.880`, `1725367029.640` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. **Cerca de 14 segundos entre cada tentativa** |
+| duração | `12`, `11`, `10` | Milissegundos. Tão rápido porque a decisão é local: o proxy nem consultou a rede |
+| cliente | `10.10.20.45` | Sempre a mesma estação |
+| resultado/status | `TCP_DENIED/403` nas três | A política barrou todas |
+| bytes | `3894` nas três | O mesmo tamanho: é a mesma página de bloqueio |
+| método | `GET` | Pedido de leitura |
+| URL | `proxy-livre.example.com`, `tunel-web.example.com`, `anon-browse.example.com` | **Três domínios diferentes, todos da mesma categoria.** Isso separa erro de clique de tentativa deliberada |
+| usuário | `jsilva` | A mesma conta autenticada nas três — não há dúvida sobre quem foi |
+| hierarquia/destino | `NONE/-` | Nada saiu para a Internet |
+| tipo de conteúdo | `text/html` | A página de bloqueio devolvida |
+
+</details>
 
 Três domínios diferentes da categoria "Proxy Avoidance" em 30 segundos é tentativa deliberada de burlar o controle, não erro de clique. Ação: registrar, notificar o gestor e a segurança de RH. Se depois aparecer um `TCP_TUNNEL` permitido para um desses, houve bypass — vira incidente.
 

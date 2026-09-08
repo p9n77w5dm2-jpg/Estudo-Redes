@@ -74,6 +74,23 @@ An account failed to log on.
   Source Port:      51344
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Reason` | `Unknown user name or bad password.` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Workstation Name` | `NB-FIN-014` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.42.87` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `51344` | Porta de origem, efêmera |
+
+</details>
+
 Leitura dos campos: `Status 0xC000006D` é a falha genérica de credencial; o `Sub Status 0xC000006A` especifica **senha incorreta para um usuário que existe** (já `0xC0000064` seria usuário inexistente, e `0xC0000234` conta bloqueada). `Logon Type 3` é logon de rede (SMB, compartilhamento, autenticação remota), diferente do `Type 10` de RDP (Remote Desktop Protocol, área de trabalho remota).
 
 O que o N1 observa: dois ou três 4625 isolados de um usuário no horário comercial é normal (digitou errado, voltou de férias). Suspeito é o **padrão**: mesmo IP de origem gerando 4625 contra dezenas de contas diferentes em poucos minutos (password spraying, MITRE ATT&CK **T1110.003**), ou muitos 4625 com `Sub Status 0xC0000064` — usuários que nem existem, sinal de lista importada de fora.
@@ -132,6 +149,17 @@ Windows Security — 09:02:19  EventID 4625  Account: svc_backup   Sub Status: 0
 Windows Security — 09:04:02  EventID 4624  Account: svc_backup   Logon Type: 3           Source: 10.10.42.87
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625  Account: maria.costa` / `4625  Account: jsilva` / `4625  Account: admin.rodrigo` / `4625  Account: svc_backup` … | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Source` | `10.10.42.87` | Provedor que gerou o evento |
+
+</details>
+
 4. Um colega chegou ao dia 30 e consegue recitar de cor a tabela de portas, mas não consegue explicar por que uma consulta DNS aparece antes do handshake TCP numa captura. Ele pode avançar para a fase 2? Justifique pelo critério de aprovação.
 5. Escreva o campo "normal x suspeito" de uma nota de triagem para o EventID 4769 (solicitação de ticket de serviço Kerberos), citando a técnica MITRE correspondente ao abuso mais comum.
 
@@ -186,6 +214,32 @@ Exemplo do log que você vai ler no dia 13 (Palo Alto, formato CSV do tipo TRAFF
 Sep 03 09:14:22 fw-core-01 1,2026/09/03 09:14:22,001801099999,TRAFFIC,end,2561,2026/09/03 09:14:20,10.10.20.37,203.0.113.45,192.0.2.10,203.0.113.45,Regra-Saida-Web,jsilva,,ssl,vsys1,Interna,Externa,ae1.20,ae1.10,Log-Forward,2026/09/03 09:14:21,84213,1,51422,443,41255,443,0x400053,tcp,allow,18422,4210,14212,54,ANY
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1 | *(cabeçalho syslog)* | `Sep 03 09:14:22 fw-core-01` | **Não é campo do CSV** — é o cabeçalho do syslog. O `1` no fim já é o primeiro campo reservado |
+| 2 / 7 | Receive / Generated Time | `2026/09/03 09:14:22` e `09:14:20` | Quando o firewall recebeu e quando ocorreu. **Dois segundos de diferença**: o evento aconteceu antes de ser registrado |
+| 3 | Serial Number | `001801099999` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, no fim |
+| 6 | — | `2561` | Reservado pelo fabricante |
+| 8 / 9 | Source / Destination Address | `10.10.20.37` / `203.0.113.45` | Origem interna e destino externo |
+| 10 / 11 | NAT Source / Destination IP | `192.0.2.10` / `203.0.113.45` | Endereço público de saída e destino |
+| 12 | Rule Name | `Regra-Saida-Web` | A regra que permitiu |
+| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
+| 17 / 18 | Source / Destination Zone | `Interna` / `Externa` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ae1.20` / `ae1.10` | Subinterfaces de *port-channel* |
+| 21 / 22 | Log Action / — | `Log-Forward` / `2026/09/03 09:14:21` | Perfil de log e campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `84213` / `1` | Sessão e contagem |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | Porta efêmera e HTTPS |
+| 27 / 28 | NAT Source / Destination Port | `41255` / `443` | Portas após tradução |
+| 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits, protocolo e veredito |
+| 32 / 33 / 34 / 35 | Bytes / Sent / Received / Packets | `18422` / `4210` / `14212` / `54` | Volume total, por direção, e pacotes |
+| 36 | Category | `ANY` | Sem categoria de URL atribuída |
+
+</details>
+
 Campos que importam para o N1: origem `10.10.20.37`, destino `203.0.113.45`, usuário `jsilva`, aplicação `ssl`, porta destino `443`, ação `allow`, bytes enviados e recebidos. **Normal:** estação interna falando 443 com destino externo, poucos KB. **Suspeito:** a mesma estação abrindo centenas de sessões por minuto para o mesmo IP, ou tráfego `ssl` numa porta esquisita como 4444. **Erro comum de júnior:** olhar só a ação `allow` e ignorar o volume de bytes — exfiltração de dados quase sempre é uma sessão *permitida*.
 
 ### Semana 3 — DNS, HTTP e TLS (Módulos 4 e 5)
@@ -237,6 +291,23 @@ Workstation Name: WS-VENDAS-14
 Source Network Address: 10.10.31.88
 Process Name:   -
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Reason` | `Unknown user name or bad password.` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Workstation Name` | `WS-VENDAS-14` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.31.88` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Process Name` | `-` | Caminho completo do executável |
+
+</details>
 
 Campos: `Logon Type 3` significa logon de rede (acesso a compartilhamento ou autenticação remota), diferente do tipo 2 (interativo, teclado) e do tipo 10 (RDP). `Sub Status 0xC000006A` = senha errada com usuário que existe; `0xC0000064` = usuário não existe. **Normal:** um ou dois 4625 por dia de alguém que errou a senha. **Suspeito:** 40 eventos 4625 do mesmo `10.10.31.88` contra 40 usuários diferentes em 3 minutos — isso é *password spraying* (MITRE ATT&CK T1110.003). **Erro comum de júnior:** escalar cada 4625 isolado. O sinal está no *padrão*: muitos usuários com poucas tentativas cada.
 
@@ -325,6 +396,39 @@ O log de firewall é o documento mais lido do plantão N1. Comece pelo formato C
 1,2026/03/12 09:41:22,001901000123,TRAFFIC,end,2561,2026/03/12 09:41:22,10.10.20.45,203.0.113.10,192.0.2.7,203.0.113.10,Regra-Saida-Usuarios,corp\jsilva,,web-browsing,vsys1,Trust,Untrust,ae1.20,ae2.100,Log-Padrao,2026/03/12 09:41:24,88214,1,51422,443,42188,443,0x400053,tcp,allow,14822,4210,10612,42,2026/03/12 09:40:58,3,computer-and-internet-info,0,7302011,0x0,10.0.0.0-10.255.255.255,US,,21,21
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1, 6, 39 | — | `1`, `2561`, `0` | Reservados pelo fabricante. **Comece a contar pela posição 2** |
+| 2 / 7 | Receive / Generated Time | `2026/03/12 09:41:22` | Quando o firewall recebeu e quando ocorreu |
+| 3 | Serial Number | `001901000123` | Qual equipamento gerou |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, registrado no **fim** — só o `end` traz os totais |
+| 8 / 9 | Source / Destination Address | `10.10.20.45` / `203.0.113.10` | Origem interna e destino externo |
+| 10 / 11 | NAT Source / Destination IP | `192.0.2.7` / `203.0.113.10` | O IP público com que a sessão saiu, e o destino |
+| 12 | Rule Name | `Regra-Saida-Usuarios` | A regra que decidiu |
+| 13 / 14 | Source / Destination User | `corp\jsilva` / *(vazio)* | Usuário resolvido pelo User-ID |
+| 15 | Application | `web-browsing` | App-ID: navegação HTTP identificada por inspeção |
+| 16 | Virtual System | `vsys1` | Firewall virtual |
+| 17 / 18 | Source / Destination Zone | `Trust` / `Untrust` | O sentido do tráfego |
+| 19 / 20 | Inbound / Outbound Interface | `ae1.20` / `ae2.100` | Subinterfaces de *port-channel* |
+| 21 / 22 | Log Action / — | `Log-Padrao` / `2026/03/12 09:41:24` | Perfil de log e campo reservado |
+| 23 / 24 | Session ID / Repeat Count | `88214` / `1` | Sessão e contagem |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | Porta efêmera e HTTPS |
+| 27 / 28 | NAT Source / Destination Port | `42188` / `443` | Portas após tradução |
+| 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits, protocolo e veredito |
+| 32 | Bytes | `14822` | Total nos dois sentidos |
+| 33 / 34 | Bytes Sent / Received | `4210` / `10612` | Volume em cada direção |
+| 35 | Packets | `42` | Total de pacotes |
+| 36 / 37 | Start Time / Elapsed | `2026/03/12 09:40:58` / `3` | Início e duração: **3 segundos** |
+| 38 | Category | `computer-and-internet-info` | Categoria de URL do destino |
+| 40 / 41 | Sequence Number / Action Flags | `7302011` / `0x0` | Sequencial do log e bits da ação |
+| 42 / 43 | Source / Destination Location | `10.0.0.0-10.255.255.255` / `US` | Faixa interna na origem, país no destino |
+| 44 | — | `-` | Reservado |
+| 45 / 46 | Packets Sent / Received | `21` / `21` | Pacotes em cada direção |
+
+</details>
+
 Campos que importam para o N1, na ordem em que aparecem: tipo de log (`TRAFFIC`), horário, IP de origem `10.10.20.45`, IP de destino `203.0.113.10`, IP traduzido pelo NAT `192.0.2.7`, nome da regra `Regra-Saida-Usuarios`, usuário `corp\jsilva`, aplicação `web-browsing`, zona de origem `Trust`, zona de destino `Untrust`, porta de origem `51422`, porta de destino `443`, protocolo `tcp`, ação `allow`, bytes totais `14822`, bytes enviados `4210`, bytes recebidos `10612`, pacotes `42`, categoria de URL `computer-and-internet-info`.
 
 O que o SOC N1 observa: normal é um usuário nomeado saindo pela regra esperada, para porta 443, com bytes recebidos maiores que os enviados (você baixa mais do que envia ao navegar). Suspeito é o inverso — 4 MB enviados e 8 KB recebidos para um destino sem categoria — porque isso é o formato de exfiltração de dados (MITRE ATT&CK T1041, exfiltração pelo canal de comando e controle).
@@ -335,13 +439,65 @@ O mesmo evento em FortiGate, formato chave=valor, mais fácil de ler porque cada
 date=2026-03-12 time=09:41:22 devname="FGT-MATRIZ" devid="FG100F0000012345" logid="0000000013" type="traffic" subtype="forward" level="notice" srcip=10.10.20.45 srcport=51422 srcintf="port2" dstip=203.0.113.10 dstport=443 dstintf="port1" poluuid="a1b2" sessionid=88214 proto=6 action="accept" policyid=12 policyname="Saida-Usuarios" service="HTTPS" srccountry="Reserved" dstcountry="United States" user="jsilva" sentbyte=4210 rcvdbyte=10612 duration=3 appcat="Web.Client"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-03-12` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `09:41:22` | Hora local do equipamento |
+| `devname` | `"FGT-MATRIZ"` | Nome do equipamento que gerou o log |
+| `devid` | `"FG100F0000012345"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0000000013"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"notice"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `10.10.20.45` | IP de origem |
+| `srcport` | `51422` | Porta de origem, efêmera e sorteada pelo cliente |
+| `srcintf` | `"port2"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstip` | `203.0.113.10` | IP de destino |
+| `dstport` | `443` | Porta de destino — é ela que aponta o serviço |
+| `dstintf` | `"port1"` | Interface por onde o tráfego **saiu** |
+| `poluuid` | `"a1b2"` | UUID da regra. **Sobrevive à renumeração**, ao contrário do `policyid` |
+| `sessionid` | `88214` | Identificador da sessão na tabela de estado — casa o início e o fim da mesma conexão |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `12` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `policyname` | `"Saida-Usuarios"` | Nome da regra — mais legível que o número, e sobrevive à renumeração |
+| `service` | `"HTTPS"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `srccountry` | `"Reserved"` | País de origem por geolocalização. Para IP privado vem `Reserved` |
+| `dstcountry` | `"United States"` | País de destino por geolocalização |
+| `user` | `"jsilva"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `sentbyte` | `4210` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `10612` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `duration` | `3` | Duração da sessão em **segundos** |
+| `appcat` | `"Web.Client"` | Categoria da aplicação identificada |
+| — | — | Este é o exemplo mais completo do curso: tem `poluuid` (que sobrevive à renumeração), `srccountry`/`dstcountry`, `appcat` e `sessionid`. Vale como referência dos nomes de campo do FortiOS |
+
+</details>
+
 Aqui `proto=6` é TCP (protocolo 6 na tabela IANA; 17 é UDP e 1 é ICMP) e `action="accept"` equivale ao `allow` do Palo Alto. No Cisco ASA a construção de sessão aparece assim:
 
 ```
 Mar 12 09:41:22 fw-asa-01 %ASA-6-302013: Built outbound TCP connection 88214 for outside:203.0.113.10/443 (203.0.113.10/443) to inside:10.10.20.45/51422 (192.0.2.7/51422)
 ```
 
-`%ASA-6-302013` significa severidade 6 (informational) e mensagem 302013, "conexão TCP construída". A conexão encerrada é `%ASA-6-302014` e traz o motivo do encerramento (`Teardown ... Reason: TCP FINs`).
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| *(cabeçalho syslog)* | `Mar 12 09:41:22 fw-asa-01` | **Não faz parte da mensagem do ASA** — é o que o syslog acrescenta à frente: data, hora e nome do equipamento |
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `outbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88214` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:203.0.113.10/443` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(203.0.113.10/443)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.20.45/51422` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(192.0.2.7/51422)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+
+</details>
+
 
 Erro comum de analista júnior: tratar `action=allow` como "está tudo bem". O firewall permitiu porque a regra permite — a regra não sabe se o destino é malicioso. Um beacon de command and control (comando e controle) passa por uma regra de saída com `allow` mil vezes por dia.
 
@@ -395,6 +551,24 @@ Logon Process:       NtLmSsp
 Authentication Package: NTLM
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Failure Reason` | `Unknown user name or bad password` | Motivo da falha em texto — legível, mas **use o `Sub Status` na regra** |
+| `Status` | `0xC000006D` | Código geral do resultado. `0xC000006D` = falha genérica de logon — o `Sub Status` é que diz a causa real |
+| `Sub Status` | `0xC000006A` | **O código que diz a causa real** — o `Status` costuma ser genérico. `0xC000006A` = **senha errada** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Workstation Name` | `WKS-VENDAS-07` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.30.88` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+
+</details>
+
 Tradução: `Logon Type 3` é logon de rede (acesso a compartilhamento ou autenticação remota), diferente do tipo 2 (teclado da máquina) e do tipo 10 (RDP, área de trabalho remota). `Sub Status 0xC000006A` significa senha errada com usuário existente; `0xC0000064` significa usuário inexistente. Essa diferença é a linha entre password spraying (T1110.003, senha única contra muitas contas, gera muitos `0xC000006A` de contas diferentes) e enumeração de usuários (muitos `0xC0000064`).
 
 E o par correspondente do Kerberos, evento 4769 (solicitação de ticket de serviço):
@@ -408,6 +582,20 @@ Ticket Options:      0x40810000
 Ticket Encryption Type: 0x17
 Failure Code:        0x0
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
+| `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `svc_backup` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:10.10.20.45` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
+| `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
+| `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
+
+</details>
 
 `Ticket Encryption Type 0x17` é RC4-HMAC, criptografia fraca. Um único 4769 com 0x17 pode ser sistema legado; dezenas deles pedidos pela mesma conta para várias contas de serviço em poucos minutos é o padrão de Kerberoasting (T1558.003). Erro comum de júnior: abrir incidente no primeiro 0x17. O sinal é volume e variedade de serviços, não o evento isolado.
 
@@ -653,6 +841,19 @@ NewProcessName=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
 ParentProcessName=C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE
 CommandLine="powershell.exe -nop -w hidden -enc <cadeia base64 omitida>"
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4688` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4688` = **criação de processo** |
+| `Computer` | `WS-FIN-014.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `SubjectUserName` | `jsilva` | A conta que pediu a ação |
+| `NewProcessName` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Caminho do processo criado |
+| `ParentProcessName` | `C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE` | Caminho do processo pai |
+| `CommandLine` | `"powershell.exe -nop -w hidden -enc <cadeia base64 omitida>"` | Linha de comando. `-enc` indica comando em Base64 e `-w hidden` janela oculta |
+
+</details>
 
 2. Um colega quer publicar no portfólio um writeup com o IP `189.45.22.7`, o domínio do cliente e o nome real do gerente. Cite três correções obrigatórias antes de publicar.
 

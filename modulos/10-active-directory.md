@@ -41,6 +41,24 @@ Source Network Address: 10.20.30.55
 Source Port:  49512
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Log Name` | `Security` | Qual registro guarda o evento: `Security` é o de auditoria, `System` o do sistema, `Microsoft-Windows-Sysmon/Operational` o do Sysmon |
+| `Source` | `Microsoft-Windows-Security-Auditing` | Provedor que gerou o evento |
+| `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Account Domain` | `CORP` | Domínio da conta |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Logon Process` | `Kerberos` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `Kerberos` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Source Network Address` | `10.20.30.55` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `49512` | Porta de origem, efêmera |
+
+</details>
+
 Campos: `Logon Type 3` = logon de rede (acesso a compartilhamento, LDAP, RPC); `Logon Type 2` = interativo no teclado; `10` = RDP. `Authentication Package` diz se foi Kerberos ou NTLM. `Source Network Address` é a origem real.
 
 **O que o SOC N1 observa.** Normal: estações de usuário autenticando por Kerberos, tipo 3, o dia inteiro. Suspeito: `Logon Type 10` (RDP) direto em um DC vindo de uma estação comum, ou NTLM onde sempre houve Kerberos.
@@ -134,6 +152,21 @@ Group Name: Domain Admins
 Group Domain: CORP
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4728` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4728` = membro adicionado a grupo global de segurança |
+| `Log Name` | `Security` | Qual registro guarda o evento: `Security` é o de auditoria, `System` o do sistema, `Microsoft-Windows-Sysmon/Operational` o do Sysmon |
+| `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Subject Account Name` | `admin.rodrigo` | A conta que **pediu** a ação |
+| `Member` | *(cabeçalho)* | O membro adicionado ou removido do grupo |
+| `CN` | `svc_backup,OU=Contas-Servico,DC=corp,DC=local` | *Common Name* do objeto no diretório |
+| `Group Name` | `Domain Admins` | O grupo alterado. `Domain Admins` aqui é o achado de maior prioridade num SOC |
+| `Group Domain` | `CORP` | Domínio do grupo |
+
+</details>
+
 `4728` = membro adicionado a grupo global; `4732` = grupo local; `4756` = universal.
 
 **O que o SOC N1 observa.** Normal: mudanças em janela de manutenção, feitas por conta administrativa conhecida, com chamado aberto. Suspeito: conta de serviço entrando em Domain Admins às 03h12, sem chamado.
@@ -160,7 +193,22 @@ query=_ldap._tcp.dc._msdcs.corp.local  qtype_name=SRV  rcode_name=NOERROR
 answers=0,100,389,DC01.corp.local
 ```
 
-Os campos da resposta SRV são: prioridade `0`, peso `100`, **porta 389**, alvo `DC01.corp.local`.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756880412.114` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| `uid` | `CwXy3a` | Identificador único da conexão |
+| `id.orig_h` / `id.orig_p` | `10.20.30.55` / `51833` | O cliente que está procurando um controlador de domínio |
+| `id.resp_h` / `id.resp_p` | `10.10.10.10` / `53` | O servidor DNS que respondeu — num domínio AD, normalmente o próprio DC |
+| `proto` | `udp` | Consulta DNS sobre UDP |
+| `query` | `_ldap._tcp.dc._msdcs.corp.local` | O nome consultado. **Lê-se de trás para frente**: no domínio `corp.local`, na zona especial `_msdcs`, os `dc` que oferecem `_ldap` sobre `_tcp` |
+| `qtype_name` | `SRV` | Registro de **serviço**: em vez de um IP, devolve prioridade, peso, porta e nome do host |
+| `rcode_name` | `NOERROR` | A consulta resolveu |
+| `answers` | `0,100,389,DC01.corp.local` | A resposta SRV, nesta ordem: **prioridade** `0` (menor ganha), **peso** `100` (distribui carga entre alvos de igual prioridade), **porta** `389` e **alvo** `DC01.corp.local` |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: estações consultando SRV para os DCs internos. Suspeito: consulta a `_ldap._tcp.dc._msdcs` partindo de um servidor DMZ que nunca ingressou no domínio, ou resolução de nomes de DC via DNS público 203.0.113.53.
 
@@ -550,6 +598,21 @@ Ticket Encryption Type: 0x17
 Failure Code:        0x0
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
+| `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `svc_backup` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Service ID` | `CORP\svc_backup` | SID do serviço |
+| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
+| `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
+| `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
+
+</details>
+
 Campo a campo: `Account Name` é quem pediu; `Service Name` é para qual serviço; `Client Address` é a estação de origem; `Ticket Encryption Type` é o algoritmo. **0x17 = RC4-HMAC**, um algoritmo antigo e fácil de quebrar; **0x12 = AES256**, o normal em domínios modernos.
 
 **O que o SOC N1 observa.**
@@ -590,6 +653,19 @@ Pre-Authentication Type: 0
 Result Code:             0x0
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4768` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio |
+| `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
+| `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
+
+</details>
+
 **O que o N1 observa.** `Pre-Authentication Type: 2` é o normal. **`0` é a exceção que interessa.** Vários 4768 com pré-autenticação 0, para contas diferentes, vindos do mesmo IP em segundos, é enumeração.
 
 **Falso positivo.** Contas de integração legadas realmente configuradas assim há anos, sempre com o mesmo IP de origem. Compare com a linha de base.
@@ -613,6 +689,21 @@ Source Network Address:  10.10.20.57
 Logon Process:           NtLmSsp
 Key Length:              128
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4624` = logon **bem-sucedido** |
+| `Logon Type` | `3` | **Como a sessão foi iniciada.** `3` = **rede** — acesso a compartilhamento, RPC, WinRM. É o tipo que domina em movimento lateral |
+| `Account Name` | `admin.rodrigo` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Authentication Package` | `NTLM` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Workstation Name` | `WKS-FINANCE-04` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.20.57` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Logon Process` | `NtLmSsp` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Key Length` | `128` | Tamanho da chave de sessão. `0` é normal em Kerberos |
+
+</details>
 
 **O que o N1 observa.** Em domínio saudável, estação falando com estação usa **Kerberos**, não NTLM. Logon NTLM tipo 3 **entre duas estações de trabalho**, com conta administrativa, e **sem um 4768/4769 correspondente no DC** naquele minuto, é o padrão clássico de movimentação lateral. Correlacione ainda com Sysmon EventID 1 (criação de processo) mostrando `PsExec` ou serviço criado (EventID 7045).
 
@@ -639,6 +730,19 @@ Ticket Options:      0x40810000
 Ticket Encryption Type: 0x17
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
+| `Account Name` | `backup_svc_adm@CORP.LOCAL      <-- conta que não existe no AD` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Service Name` | `cifs/fs01.corp.local` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
+| `Client Address` | `::ffff:10.10.30.91` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
+| `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
+
+</details>
+
 **Três sinais de altíssimo valor:** (1) 4769 sem 4768 anterior para a mesma conta; (2) nome de conta que **não existe** no diretório; (3) tempo de vida absurdo do ticket (o padrão da Microsoft é 10 horas; forjas comuns usam 10 anos).
 
 **Silver Ticket.** Versão local: com o hash da conta do **serviço** (não do krbtgt), o atacante forja apenas o TGS daquele serviço. O DC nunca é consultado — por isso **não há 4769 no controlador de domínio**, só um 4624 no servidor-alvo. Comparar logs do servidor com os do DC é o único jeito de ver o buraco.
@@ -661,6 +765,20 @@ Properties: Control Access
    {1131f6aa-9c07-11d1-f79f-00c04fc2dcd2}   <-- DS-Replication-Get-Changes
 Access Mask:          0x100
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4662` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4662` = operação sobre objeto do Active Directory |
+| `Subject Account Name` | `jsilva` | A conta que **pediu** a ação |
+| `Object Server` | `DS` | Componente que atendeu o acesso — normalmente `Security` |
+| `Object Type` | `%{19195a5b-6da0-11d0-afd3-00c04fd930c9}` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Properties` | `Control Access` | Atributos do objeto que foram tocados |
+| `Access Mask` | `0x100` | Permissões pedidas em bits: `0x1` leitura, `0x2` escrita, `0x4` acrescentar |
+| *(hora na linha do cabeçalho)* | `2026-03-11 03:12:44` | Como no exemplo anterior, a hora vem colada ao `EventID` por formatação de exportação, e não como campo |
+
+</details>
 
 ```kql
 // Sentinel / Defender for Identity
@@ -692,6 +810,19 @@ EventID=4625  Account Name: admin.rodrigo Status: 0xC000006A  Source: 203.0.113.
 EventID=4771  Account Name: svc_backup    Failure Code: 0x18  Client Address: 203.0.113.45
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4625` / `4771` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4625` = **falha** de logon; `4771` = **pré-autenticação** Kerberos falhou |
+| `Account Name` | `jsilva` / `maria.costa` / `admin.rodrigo` / `svc_backup` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Status` | `0xC000006A` | Código geral do resultado. `0xC000006A` = **senha errada** |
+| `Source` | `203.0.113.45` | Provedor que gerou o evento |
+| `Failure Code` | `0x18` | **Código de falha do Kerberos.** `0x18` = **senha errada** — é o código de falha mais comum em spraying |
+| `Client Address` | `203.0.113.45` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+
+</details>
+
 `0xC000006A` = senha errada. `0xC0000064` = usuário inexistente (indica enumeração). No Kerberos, EventID 4771 com `Failure Code 0x18` significa pré-autenticação falhou — senha errada.
 
 **Falso positivo clássico.** Troca de senha recente com celular, tablet ou serviço de sincronização ainda usando a credencial antiga: gera rajada de 4625 na **mesma conta**, do **mesmo dispositivo**, com `0xC000006A`. Isso é falha de configuração, não ataque. O sinal de ataque é a **diversidade de contas** a partir de uma origem.
@@ -711,6 +842,18 @@ Logon Account:          jsilva
 Source Workstation:     WKS-FINANCE-04
 Error Code:             0x0
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4776` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4776` = validação de credencial por **NTLM** (protocolo anterior ao Kerberos) |
+| `Authentication Package` | `MICROSOFT_AUTHENTICATION_PACKAGE_V1_0` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `Logon Account` | `jsilva` | Conta que tentou autenticar (usado no 4776, do NTLM) |
+| `Source Workstation` | `WKS-FINANCE-04` | Nome declarado pela máquina de origem |
+| `Error Code` | `0x0` | Código do erro. `0x0` = sucesso |
+
+</details>
 
 **Contenção.** Desabilitar LLMNR e NBT-NS por política (isso é mitigação permanente), isolar o host que responde a tudo.
 
@@ -837,6 +980,30 @@ Detailed Authentication Information:
     Authentication Package: Negotiate
 EventID: 4624 | Computer: DC01.corp.local | Time: 2026-03-11 02:47:13
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `Subject` | *(cabeçalho)* | *(cabeçalho de seção)* **Quem pediu a ação** — não confundir com o alvo dela |
+| `Security ID` | `NULL SID` / `CORP\admin.rodrigo` | O **SID**, identificador que não muda quando a conta é renomeada — é ele que resolve renomeações |
+| `Account Name` | `-` / `admin.rodrigo` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
+| `Logon Type` | `10` | **Como a sessão foi iniciada.** `10` = **RemoteInteractive** — RDP, área de trabalho remota |
+| `New Logon` | *(cabeçalho)* | *(cabeçalho de seção)* Os dados da sessão que acabou de ser criada |
+| `Account Domain` | `CORP.LOCAL` | Domínio da conta |
+| `Logon ID` | `0x3E9A17` | **Costura os eventos da mesma sessão**: o 4624 que a abre, os 5140 de acesso e o 4634 que a fecha trazem o mesmo valor |
+| `Network Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa os campos de origem na rede |
+| `Workstation Name` | `WKS-VENDAS-042` | Nome que a máquina de origem **declarou**. Vem do próprio cliente, logo é falsificável — trate como pista, não como identidade |
+| `Source Network Address` | `10.10.34.77` | **IP de origem.** Vazio ou `-` significa que a sessão foi local, e `::1`/`127.0.0.1` que veio da própria máquina |
+| `Source Port` | `51422` | Porta de origem, efêmera |
+| `Detailed Authentication Information` | *(cabeçalho)* | *(cabeçalho de seção)* Agrupa os campos do pacote de autenticação |
+| `Logon Process` | `User32` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
+| `Authentication Package` | `Negotiate` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
+| `EventID` | `4624` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| *(hora na linha do cabeçalho)* | `2026-03-11 02:47:13` | Este exemplo põe a hora **na mesma linha do `EventID`, separada por uma barra vertical**. É formatação de quem exportou o log, não campo do Windows: no evento real a hora vem em `TimeCreated` |
+
+</details>
 
 Campo a campo: `Logon Type 10` é RDP; `New Logon` é quem entrou; `Source Network Address` é de onde veio; `Workstation Name` é o nome da máquina de origem. O que salta aos olhos: uma conta de administrador entrando por RDP **no controlador de domínio**, às 02h47, partindo de uma estação de vendas. Nenhum desses três fatos, isolado, prova algo. Os três juntos são um incidente.
 
@@ -968,6 +1135,19 @@ Object Type: domainDNS
 Properties: Control Access {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}
 Accesses: Control Access
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `EventID` | `4662` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
+| `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
+| `Subject Account Name` | `jsilva` | A conta que **pediu** a ação |
+| `Object Type` | `domainDNS` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Properties` | `Control Access {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}` | Atributos do objeto que foram tocados |
+| `Accesses` | `Control Access` | As permissões pedidas, em texto |
+
+</details>
 
 4. Um 4624 mostra `Logon Type 11` para `maria.costa` no notebook `NB-1180` às 21h30. O time de service desk abriu um alerta. É incidente?
 5. Ordene por prioridade de triagem, do mais grave para o menos grave: 4634, 1102, 4740, 4756.

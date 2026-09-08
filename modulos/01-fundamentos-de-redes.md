@@ -41,7 +41,52 @@ No modelo **P2P** (*peer-to-peer*, ponto a ponto), cada máquina é cliente e se
 1,2026/09/03 09:14:22,001801011111,TRAFFIC,end,2561,2026/09/03 09:14:22,10.10.20.45,203.0.113.44,192.0.2.10,203.0.113.44,Regra-Saida-Usuarios,jsilva,,ssl,vsys1,Confianca,Internet,ethernet1/2,ethernet1/1,Log-Padrao,2026/09/03 09:14:20,88431,1,51422,443,41022,443,0x400053,tcp,allow,18422,6114,12308,42,2026/09/03 09:13:55,27,computer-and-internet-info,0,72910,0x0,BR,US,0,24,18
 ```
 
-Campos-chave: `10.10.20.45` é o IP de origem (host interno), `203.0.113.44` o destino, `jsilva` o usuário resolvido, `51422` a porta de origem efêmera, `443` a porta de destino, `allow` a ação, `18422` os bytes totais, `27` a duração em segundos e `42` o número de pacotes.
+<details><summary>Ver legenda</summary>
+
+| Posição | Campo | Valor no exemplo | O que significa |
+|---|---|---|---|
+| 1 | — | `1` | Reservado pelo fabricante (`FUTURE_USE`). **Existe só para ocupar a posição** — nunca conte campos a partir do 1 supondo que ele significa algo |
+| 2 | Receive Time | `2026/09/03 09:14:22` | Quando o firewall **recebeu** o evento |
+| 3 | Serial Number | `001801011111` | Número de série do equipamento. Numa frota de firewalls, é ele que diz qual falou |
+| 4 | Type | `TRAFFIC` | Tipo de log: `TRAFFIC` é sessão, `THREAT` é detecção, `SYSTEM` é o próprio aparelho |
+| 5 | Subtype | `end` | Momento do registro: `start` no início, **`end` no fim (é o que traz os bytes totais)**, `drop` e `deny` quando foi barrado |
+| 6 | — | `2561` | Reservado pelo fabricante |
+| 7 | Generated Time | `2026/09/03 09:14:22` | Quando o evento **aconteceu**. Comparar com a posição 2 revela atraso na coleta |
+| 8 | Source Address | `10.10.20.45` | IP de origem: o host interno |
+| 9 | Destination Address | `203.0.113.44` | IP de destino |
+| 10 | NAT Source IP | `192.0.2.10` | **O IP público com que a sessão saiu.** É este que o mundo externo vê — e o que aparece num alerta de abuso |
+| 11 | NAT Destination IP | `203.0.113.44` | Destino após NAT; igual ao original quando não houve tradução no destino |
+| 12 | Rule Name | `Regra-Saida-Usuarios` | **A regra que decidiu.** Sem este campo você não sabe por que o tráfego passou |
+| 13 | Source User | `jsilva` | Usuário resolvido pelo User-ID. **É o que transforma "um IP" em "uma pessoa"** |
+| 14 | Destination User | *(vazio)* | Usuário de destino; quase sempre vazio em tráfego de saída |
+| 15 | Application | `ssl` | Aplicação identificada por **inspeção do conteúdo** (App-ID), não pela porta. `ssl` significa TLS que o firewall não conseguiu classificar melhor |
+| 16 | Virtual System | `vsys1` | Qual firewall virtual atendeu |
+| 17 / 18 | Source / Destination Zone | `Confianca` / `Internet` | As zonas. **Duas máquinas podem ter o mesmo IP e zonas diferentes** — é a zona que dá o sentido de direção |
+| 19 / 20 | Inbound / Outbound Interface | `ethernet1/2` / `ethernet1/1` | Por onde entrou e por onde saiu fisicamente |
+| 21 | Log Action | `Log-Padrao` | O perfil de encaminhamento de log aplicado |
+| 22 | — | `2026/09/03 09:14:20` | Reservado pelo fabricante (traz um horário, mas não é campo documentado) |
+| 23 | Session ID | `88431` | Identificador da sessão no firewall. **É a chave para juntar o `start` e o `end` da mesma conexão** |
+| 24 | Repeat Count | `1` | Quantas sessões idênticas foram condensadas nesta linha. Valor alto esconde volume |
+| 25 / 26 | Source / Destination Port | `51422` / `443` | Porta de origem (efêmera) e de destino |
+| 27 / 28 | NAT Source / Destination Port | `41022` / `443` | As portas após tradução. **O par "IP público + porta de origem NAT + horário" é o que permite desfazer o NAT** num pedido externo |
+| 29 | Flags | `0x400053` | Campo de bits com características da sessão (NAT aplicado, sessão registrada, decifrada por proxy...) |
+| 30 | Protocol | `tcp` | Protocolo de transporte |
+| 31 | Action | `allow` | O veredito: `allow`, `deny`, `drop`, `reset-both` |
+| 32 | Bytes | `18422` | Total nos dois sentidos |
+| 33 / 34 | Bytes Sent / Received | `6114` / `12308` | O volume em cada direção. **Comparar os dois é o que revela exfiltração** |
+| 35 | Packets | `42` | Total de pacotes |
+| 36 | Start Time | `2026/09/03 09:13:55` | Início da sessão |
+| 37 | Elapsed Time | `27` | Duração em **segundos** |
+| 38 | Category | `computer-and-internet-info` | Categoria de URL do destino |
+| 39 | — | `0` | Reservado pelo fabricante |
+| 40 | Sequence Number | `72910` | Número sequencial do log no equipamento; serve para detectar perda de eventos |
+| 41 | Action Flags | `0x0` | Bits sobre a ação tomada |
+| 42 / 43 | Source / Destination Location | `BR` / `US` | País de origem e de destino. **Útil para "viagem impossível" e destinos onde a empresa não opera** |
+| 44 | — | `0` | Reservado pelo fabricante |
+| 45 / 46 | Packets Sent / Received | `24` / `18` | Pacotes em cada direção |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: portas de origem altas e variadas, destino 443, duração compatível com navegação. Suspeito: mesma origem e mesmo destino repetindo sessões de 2 a 3 segundos a cada 60 segundos exatos, com poucos bytes — assinatura clássica de *beaconing* de canal de comando e controle (MITRE ATT&CK T1071 — Application Layer Protocol).
 
@@ -64,7 +109,23 @@ Campos-chave: `10.10.20.45` é o IP de origem (host interno), `203.0.113.44` o d
 1756890975.882   642 10.10.20.45 TCP_DENIED/403 3901 CONNECT arquivos-livres.example.com:443 jsilva HIER_NONE/- text/html
 ```
 
-Campos: *timestamp* Unix, duração em milissegundos, IP do cliente, código de resultado/status HTTP, bytes, método, URL, usuário e destino. `TCP_DENIED/403` significa que a política do proxy bloqueou.
+<details><summary>Ver legenda</summary>
+
+| Campo (na ordem do `access.log`) | 1ª linha (permitida) / 2ª linha (bloqueada) | O que significa |
+|---|---|---|
+| 1 · *timestamp* | `1756890912.431` / `1756890975.882` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos |
+| 2 · duração | `214` / `642` | Tempo que o proxy levou para atender, em **milissegundos** |
+| 3 · cliente | `10.10.20.45` | IP de quem pediu. **Depois do proxy o destino só vê o IP do proxy** — é aqui que está o usuário real |
+| 4 · resultado/status | `TCP_MISS/200` / `TCP_DENIED/403` | Duas informações coladas: o que o **cache** fez e o que o **HTTP** respondeu. `TCP_MISS` = não estava em cache, buscou na origem; `TCP_DENIED` = a política do proxy barrou, e aí o pedido nem saiu |
+| 5 · bytes | `8421` / `3901` | Tamanho da resposta entregue ao cliente. Nos bloqueios, é o tamanho da página de erro |
+| 6 · método | `GET` / `CONNECT` | `GET` é HTTP em claro; **`CONNECT` é o pedido de túnel para HTTPS** |
+| 7 · URL | `http://portal.corp.local/rh/ferias` / `arquivos-livres.example.com:443` | O alvo. Em `CONNECT` aparece só host e porta: **o caminho vai cifrado e o proxy não o vê** |
+| 8 · usuário | `-` / `jsilva` | Conta autenticada no proxy. `-` significa que não houve autenticação nesse pedido |
+| 9 · hierarquia/destino | `HIER_DIRECT/10.10.5.30` / `HIER_NONE/-` | Por onde o proxy foi buscar. `HIER_DIRECT` = direto na origem; **`HIER_NONE` confirma que nada saiu** |
+| 10 · tipo de conteúdo | `text/html` | O MIME devolvido |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: usuário interno acessando intranet e sites de categoria de negócio. Suspeito: host interno consultando recursos da extranet fora do horário e a partir de um IP de origem que não pertence à faixa daquele escritório.
 
@@ -78,15 +139,33 @@ Campos: *timestamp* Unix, duração em milissegundos, IP do cliente, código de 
 
 **Exemplo prático.** Escritório de São Paulo: faixa 10.10.20.0/24, gateway 10.10.20.1, 254 hosts possíveis, um único domínio de broadcast. `maria.costa` está em 10.10.20.77.
 
-**Como aparece nos logs.** Zeek, `conn.log` (formato tabulado):
+**Como aparece nos logs.** Zeek, `conn.log` (TSV — colunas alinhadas aqui para leitura):
 
 ```
-#fields ts	uid	id.orig_h	id.orig_p	id.resp_h	id.resp_p	proto	service	duration	orig_bytes	resp_bytes	conn_state
-1756891044.118	CmXQ2p1a9Kz	10.10.20.77	49212	10.10.5.10	445	tcp	smb	3.221	4820	19044	SF
-1756891050.902	CqW8f3Lb2Rt	10.10.20.77	49301	10.10.20.9	445	tcp	smb	0.118	0	0	S0
+#fields ts      uid          id.orig_h    id.orig_p  id.resp_h   id.resp_p  proto  service  duration  orig_bytes  resp_bytes  conn_state
+1756891044.118  CmXQ2p1a9Kz  10.10.20.77  49212      10.10.5.10  445        tcp    smb      3.221     4820        19044       SF
+1756891050.902  CqW8f3Lb2Rt  10.10.20.77  49301      10.10.20.9  445        tcp    smb      0.118     0           0           S0
 ```
 
-Campos: `ts` é o tempo, `uid` o identificador único da conexão, `id.orig_h`/`id.orig_p` origem e porta, `id.resp_h`/`id.resp_p` destino e porta, `conn_state` o desfecho — `SF` é conexão completa e encerrada normalmente; `S0` é SYN enviado sem resposta alguma.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `ts` | `1756891044.118` | Instante do evento em epoch Unix (segundos desde 01/01/1970) com milissegundos. É por aqui que se ordena e se cruza com outros logs |
+| `uid` | `CmXQ2p1a9Kz` | Identificador único desta conexão. **É a chave da investigação**: o mesmo `uid` reaparece em `ssl.log`, `dns.log`, `http.log` e `files.log`, o que permite remontar a sessão inteira |
+| `id.orig_h` | `10.10.20.77` | IP de quem **iniciou** a conexão (mandou o primeiro SYN) — a estação de `maria.costa` |
+| `id.orig_p` | `49212` | Porta de origem, efêmera (49152–65535). Sorteada pelo cliente a cada conexão; não carrega significado |
+| `id.resp_h` | `10.10.5.10` | IP de quem **respondeu** — o servidor de arquivos |
+| `id.resp_p` | `445` | Porta de destino: SMB. É esta que identifica o serviço |
+| `proto` | `tcp` | Protocolo de transporte (`tcp`, `udp` ou `icmp`) |
+| `service` | `smb` | Serviço que o Zeek identificou **inspecionando o conteúdo**, não deduzindo da porta. Um `-` aqui, numa porta conhecida, é sinal a investigar |
+| `duration` | `3.221` | Duração em segundos, do primeiro ao último pacote |
+| `orig_bytes` | `4820` | Bytes de **payload** enviados pela origem — não conta cabeçalhos TCP/IP |
+| `resp_bytes` | `19044` | Bytes de payload devolvidos. Assimetria invertida (origem enviando muito mais do que recebe) é indício de exfiltração |
+| `conn_state` | `SF` | Desfecho: handshake completo e encerramento limpo com FIN. Compare com a 2ª linha, `S0` — SYN enviado, resposta nenhuma |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: uma estação falando SMB (porta 445) com o servidor de arquivos. Suspeito: a mesma estação abrindo `S0` na porta 445 contra dezenas de IPs sequenciais da própria LAN — varredura lateral (T1046 — Network Service Discovery). Ferramentas como Impacket e PsExec deixam esse rastro de muitas conexões 445 partindo de um host que normalmente só é cliente.
 
@@ -112,6 +191,36 @@ Campos: `ts` é o tempo, `uid` o identificador único da conexão, `id.orig_h`/`
 date=2026-09-03 time=10:02:41 devname="FGT-Matriz" devid="FGT60F0000000001" logid="0000000013" type="traffic" subtype="forward" level="notice" srcip=172.16.30.51 srcport=52133 srcintf="wan2-mpls" dstip=10.10.5.60 dstport=1433 dstintf="port3" action="accept" policyid=42 service="MS-SQL" proto=6 duration=118 sentbyte=88410 rcvdbyte=1204553 user="maria.costa"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `10:02:41` | Hora local do equipamento |
+| `devname` | `"FGT-Matriz"` | Nome do equipamento que gerou o log |
+| `devid` | `"FGT60F0000000001"` | Número de série do equipamento — numa frota, é ele que identifica qual falou |
+| `logid` | `"0000000013"` | Identificador do **tipo** de log. **É por ele que se filtra no SIEM**: o texto muda entre versões do FortiOS, o número não |
+| `type` | `"traffic"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"forward"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `level` | `"notice"` | Severidade atribuída pelo FortiOS (`notice`, `warning`, `alert`, `critical`). **Quem a escolhe é o fabricante**, não o seu SOC |
+| `srcip` | `172.16.30.51` | IP de origem |
+| `srcport` | `52133` | Porta de origem, efêmera e sorteada pelo cliente |
+| `srcintf` | `"wan2-mpls"` | Interface por onde o tráfego **entrou** — dá o sentido, que o IP sozinho não dá |
+| `dstip` | `10.10.5.60` | IP de destino |
+| `dstport` | `1433` | Porta de destino — é ela que aponta o serviço |
+| `dstintf` | `"port3"` | Interface por onde o tráfego **saiu** |
+| `action` | `"accept"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `policyid` | `42` | **Número da regra que decidiu.** Sem ele não se sabe por que o tráfego passou ou parou |
+| `service` | `"MS-SQL"` | Nome do **objeto de serviço** do FortiGate, não a porta literal. Um objeto chamado `HTTPS` pode ter sido configurado noutra porta |
+| `proto` | `6` | Número do protocolo IP: **`6` é TCP, `17` é UDP, `1` é ICMP**. Vem em número, não em nome |
+| `duration` | `118` | Duração da sessão em **segundos** |
+| `sentbyte` | `88410` | Bytes enviados **pela origem**. O ponto de vista é o da origem, não do firewall |
+| `rcvdbyte` | `1204553` | Bytes recebidos pela origem. **Comparar com `sentbyte` é o que revela exfiltração** |
+| `user` | `"maria.costa"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| — | — | `srcintf="wan2-mpls"` diz que o tráfego entrou pelo enlace **MPLS**, e `dstport=1433` que foi para SQL Server. O enlace privado garante privacidade do transporte, **não a idoneidade da origem** |
+
+</details>
+
 Campos: `srcintf` é a interface de entrada (aqui o enlace MPLS), `dstport=1433` é SQL Server, `policyid` a regra que permitiu, `sentbyte`/`rcvdbyte` o volume em cada direção.
 
 **O que o SOC N1 observa.** Normal: filial consultando o banco pelo enlace MPLS dentro do horário comercial. Suspeito: `rcvdbyte` na casa de gigabytes numa madrugada, indicando cópia em massa de base de dados (T1030 — Data Transfer Size Limits, quando fatiado).
@@ -130,7 +239,23 @@ Campos: `srcintf` é a interface de entrada (aqui o enlace MPLS), `dstport=1433`
 %ASA-6-302013: Built inbound TCP connection 884213 for man-cd:10.20.4.15/50122 (10.20.4.15/50122) to inside:10.10.5.10/445 (10.10.5.10/445)
 ```
 
-Leitura: `%ASA-6` é severidade 6 (informativo), `302013` é o *message ID* de construção de conexão TCP, `man-cd` é o nome da interface do enlace metropolitano.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `inbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `884213` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `man-cd:10.20.4.15/50122` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(10.20.4.15/50122)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.5.10/445` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(10.10.5.10/445)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | **Nenhum dos dois lados foi traduzido**, e a interface de origem chama-se `man-cd`: é o enlace metropolitano para o Centro de Distribuição. Tráfego SMB (445) entrando por ali merece a pergunta "este host devia falar com o file server?" |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: poucos servidores do CD falando com serviços específicos da sede. Suspeito: estações comuns do CD abrindo 445, 3389 (RDP) ou 5985 (WinRM) contra a sede.
 
@@ -163,7 +288,24 @@ Leitura: `%ASA-6` é severidade 6 (informativo), `302013` é o *message ID* de c
 <134>1 2026-09-03T22:41:44.902Z wlc01.corp.local AireOS - AUTH-EVENT - Client maria.costa MAC 3c:22:fb:aa:bb:cc failed 802.1X authentication on SSID CORP-WIFI, EAP failure, retries=6
 ```
 
-Campos: `<134>` é a prioridade syslog, `BSSID` é o MAC do rádio do AP (o SSID pode ser copiado, o BSSID legítimo é conhecido pelo inventário), `RSSI -41 dBm` indica sinal muito forte — ou seja, o rogue está fisicamente perto do prédio.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `<134>` | PRI | O **PRI**: um único número que embute duas coisas — `facility x 8 + severidade`. Aqui: `134 = 16 x 8 + 6`, ou seja **facility 16 (local0)** e **severidade 6 (informational)**. Cuidado: severidade baixa não quer dizer evento sem importância — quem escolhe é o fabricante |
+| `1` | VERSION | Versão 1 do formato, o que identifica RFC 5424 (o legado RFC 3164 não tem este campo) |
+| `2026-09-03T22:41:08.114Z` | TIMESTAMP | ISO 8601 com milissegundos; o `Z` final significa **UTC** — é o que permite alinhar com logs de outros fusos |
+| `wlc01.corp.local` | HOSTNAME | Quem gerou: o controlador Wi-Fi |
+| `AireOS` | APP-NAME | O sistema que emitiu a mensagem |
+| `-` | PROCID | Vazio: o controlador não informa PID |
+| `AP-EVENT`, `CLIENT-EVENT`, `AUTH-EVENT` | MSGID | **Tipo do evento — é por aqui que se filtra no SIEM**, não pelo texto livre |
+| `-` | STRUCTURED-DATA | Vazio: nada vem pré-estruturado, tudo está na mensagem |
+| `Rogue AP 'CORP-WIFI' … BSSID a4:5e:60:11:22:33 … RSSI -41 dBm` | MSG | Texto livre. **`BSSID` é o MAC do rádio do AP**: o SSID qualquer um copia, mas o BSSID legítimo está no inventário. E `RSSI -41 dBm` é sinal forte, ou seja o rogue está fisicamente perto |
+| `214 deauth frames in 10s` | MSG (2ª linha) | Rajada de desautenticação: é o empurrão que força o cliente a largar o AP legítimo |
+| `failed 802.1X … EAP failure, retries=6` | MSG (3ª linha) | O cliente tentou autenticar seis vezes e falhou — o fecho do roteiro de evil twin |
+
+</details>
+
 
 **O que o SOC N1 observa.** Normal: rogues classificados como *friendly* (Wi-Fi do vizinho, SSIDs de operadora). Suspeito: SSID corporativo com BSSID fora do inventário, seguido de rajada de *deauth* e falhas de 802.1X do mesmo cliente — a sequência inteira é o roteiro de um evil twin.
 
@@ -238,6 +380,8 @@ Nas seções anteriores vimos o que é uma rede e os tipos por alcance (LAN, WAN
 date=2026-09-03 time=08:14:22 devname="FGT-MATRIZ" devid="FG100F0000000001" logid="0101039947" type="event" subtype="vpn" level="notice" action="ssl-login-fail" user="maria.costa" remip=203.0.113.45 tunneltype="ssl-web" tunnelip=N/A group="VPN_Colaboradores" reason="sslvpn_login_permission_denied" msg="SSL user failed to logged in"
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Campo | Significado |
 |---|---|
 | `action` | Resultado: `ssl-login-fail`, `tunnel-up`, `tunnel-down` |
@@ -245,6 +389,8 @@ date=2026-09-03 time=08:14:22 devname="FGT-MATRIZ" devid="FG100F0000000001" logi
 | `remip` | IP público de origem (de onde o usuário veio) |
 | `tunnelip` | IP interno entregue ao usuário após o login |
 | `reason` | Motivo da falha (senha, MFA, permissão de grupo) |
+
+</details>
 
 **O que o SOC N1 observa.** *Normal:* `maria.costa` conecta de um IP brasileiro, das 8h às 18h, com um ou dois `tunnel-up` por dia. *Suspeito:* dezenas de `ssl-login-fail` para usuários diferentes vindos do mesmo `remip` (password spraying, MITRE **T1110.003**); ou um `tunnel-up` bem-sucedido de um país onde a empresa não opera 20 minutos depois de um login no Brasil (viagem impossível, **T1078** — contas válidas).
 
@@ -273,6 +419,8 @@ Cada VLAN é um **domínio de broadcast separado**: um ARP disparado na VLAN 20 
 1,2026/09/03 09:12:44,013201001234,TRAFFIC,end,2561,2026/09/03 09:12:44,10.20.14.87,10.10.5.20,,,Regra-Estacoes-Servidores,jsilva,,ms-ds-smb,vsys1,VLAN20-ESTACOES,VLAN10-SERVIDORES,ethernet1/2,ethernet1/3,Log-Padrao,2026/09/03 09:12:44,84512,1,51422,445,0,0,0x53,tcp,allow,18422,9210,9212,44
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Posição do campo | Nome | Valor no exemplo |
 |---|---|---|
 | 8 / 9 | IP origem / destino | `10.20.14.87` / `10.10.5.20` |
@@ -282,6 +430,8 @@ Cada VLAN é um **domínio de broadcast separado**: um ARP disparado na VLAN 20 
 | 17 / 18 | **Zona origem / destino** | `VLAN20-ESTACOES` / `VLAN10-SERVIDORES` |
 | 25 / 26 | Porta origem / destino | `51422` / `445` |
 | 30 | Ação | `allow` |
+
+</details>
 
 **O que o SOC N1 observa.** *Normal:* estação da VLAN 20 acessando o file server na VLAN 10 pela porta 445. *Suspeito:* origem na **VLAN30-IOT** (câmera) acessando servidor na VLAN 10 por 445 — câmera não faz SMB. Ou uma única origem falando 445 com 200 destinos em minutos: varredura lateral (**T1021.002**).
 
@@ -310,7 +460,21 @@ Cada VLAN é um **domínio de broadcast separado**: um ARP disparado na VLAN 20 
 %ASA-4-106023: Deny tcp src DMZ:10.30.1.10/49877 dst INTERNA:10.10.2.15/445 by access-group "dmz_access_in" [0x0, 0x0]
 ```
 
-`%ASA-4-106023` é o código de "pacote negado por lista de acesso". `src DMZ` e `dst INTERNA` são os nomes das interfaces — a mesma ideia de zona do Palo Alto.
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `4` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `4` é **warning**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `106023` | Pacote negado por lista de acesso. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| `src` | `DMZ:10.30.1.10/49877` | Interface, IP e porta de **origem**. Aqui a interface é o nome que o ASA dá à zona, e é ela que dá o sentido do tráfego |
+| `dst` | `INTERNA:10.10.2.15/445` | Interface, IP e porta de **destino** |
+| `by access-group` | ``"dmz_access_in"`` | **A lista de acesso que negou**, e a interface onde está aplicada. Sem este campo não se sabe qual regra corrigir |
+| `[0x0, 0x0]` | *(par de hashes)* | Identificador da entrada da ACL. **Zeros aqui indicam a regra implícita de negação no fim da lista**, não uma regra escrita |
+| — | — | O sentido é o que assusta: **um servidor da DMZ a tentar SMB contra a rede interna**. O bloqueio protegeu, mas não explica por que ele tentou |
+
+</details>
+
 
 **O que o SOC N1 observa.** *Normal:* servidor DMZ falando 1433 com um único banco. *Suspeito:* o exemplo acima — o servidor web tentando SMB (445) contra uma estação interna. Isso é o desenho clássico de um servidor de borda comprometido tentando movimento lateral (**T1210**). Um único evento pode ser configuração errada; uma sequência crescente para destinos diferentes é incidente.
 
@@ -445,10 +609,41 @@ Até aqui vimos os conceitos separados. Agora vamos juntar tudo em três desenho
 1,2026/09/03 09:12:44,014201, TRAFFIC,end,2049,10.10.10.87,10.10.20.30,203.0.113.9,198.51.100.44,Regra-Users-Proxy,corp\jsilva,,web-browsing,vsys1,VLAN10-Users,DMZ-Out,ae1.10,ae1.50,Log-Fwd,tcp,allow,18422,3122,15300,42,443
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Posição no exemplo | Campo | Valor | O que significa |
+|---|---|---|---|
+| 1 | — | `1` | Reservado pelo fabricante |
+| 2 | Receive Time | `2026/09/03 09:12:44` | Quando o firewall recebeu o evento |
+| 3 | Serial Number | `014201` | Número de série do equipamento (abreviado neste exemplo) |
+| 4 / 5 | Type / Subtype | `TRAFFIC` / `end` | Log de sessão, registrado no **fim** — por isso traz os bytes totais |
+| 6 | — | `2049` | Reservado pelo fabricante |
+| 7 | Source Address | `10.10.10.87` | A estação de `jsilva`, na VLAN 10 |
+| 8 | Destination Address | `10.10.20.30` | **O proxy, na VLAN 20** — o destino imediato não é a Internet |
+| 9 / 10 | NAT Source / Destination IP | `203.0.113.9` / `198.51.100.44` | O IP público de saída e o destino real na Internet |
+| 11 | Rule Name | `Regra-Users-Proxy` | A regra que permitiu estação → proxy |
+| 12 | Source User | `corp\jsilva` | Usuário resolvido, com o domínio à frente |
+| 13 | Destination User | *(vazio)* | Não se aplica |
+| 14 | Application | `web-browsing` | App-ID identificou navegação HTTP, e não apenas "porta 80" |
+| 15 | Virtual System | `vsys1` | Qual firewall virtual atendeu |
+| 16 / 17 | Source / Destination Zone | `VLAN10-Users` / `DMZ-Out` | **As zonas espelham as VLANs.** Origem na zona de usuários, destino na saída pela DMZ |
+| 18 / 19 | Inbound / Outbound Interface | `ae1.10` / `ae1.50` | Subinterfaces de um *port-channel* (`ae1`), uma por VLAN |
+| 20 | Log Action | `Log-Fwd` | Perfil de encaminhamento de log |
+| 21 / 22 | Protocol / Action | `tcp` / `allow` | Protocolo e veredito |
+| 23 | Bytes | `18422` | Total nos dois sentidos |
+| 24 / 25 | Bytes Sent / Received | `3122` / `15300` | Volume em cada direção |
+| 26 | Packets | `42` | Total de pacotes |
+| 27 | Destination Port | `443` | Porta de destino |
+| — | — | — | **Este exemplo é um recorte**: tem 27 campos, e o formato completo do PAN-OS tem mais de 46. Num log real, as posições depois da 6 não são estas |
+
+</details>
+
 ```
 EventID 4624 | Logon Type 3 | Account Name: jsilva | Domain: CORP
 Source Network Address: 10.10.10.87 | Logon Process: Kerberos | Computer: DC01
 ```
+
+<details><summary>Ver legenda</summary>
 
 | Campo do log | Significa |
 |---|---|
@@ -458,6 +653,8 @@ Source Network Address: 10.10.10.87 | Logon Process: Kerberos | Computer: DC01
 | `VLAN10-Users → DMZ-Out` | Zonas de origem e destino no firewall |
 | `allow / tcp / 443` | Ação, protocolo e porta |
 | 4624 Logon Type 3 | Logon de rede (acesso a recurso), não interativo |
+
+</details>
 
 **O que o SOC N1 observa:**
 
@@ -500,9 +697,46 @@ Source Network Address: 10.10.10.87 | Logon Process: Kerberos | Computer: DC01
 date=2026-09-03 time=21:03:11 devname="FGT-VPN01" type="event" subtype="vpn" action="tunnel-up" user="maria.costa" remip=198.51.100.77 assignip=10.99.5.34 tunneltype="ssl-web" duration=0 msg="SSL VPN tunnel up"
 ```
 
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `date` | `2026-09-03` | Data local **do equipamento**, não UTC. Correlacionar com um log em UTC sem acertar o fuso desalinha a timeline |
+| `time` | `21:03:11` | Hora local do equipamento |
+| `devname` | `"FGT-VPN01"` | Nome do equipamento que gerou o log |
+| `type` | `"event"` | Categoria do log: `traffic` é sessão, `event` é evento do próprio aparelho, `utm` é inspeção de conteúdo |
+| `subtype` | `"vpn"` | Subcategoria: `forward` é tráfego que atravessa, `local` é destinado ao próprio firewall, `vpn` é túnel, `webfilter` e `ips` são inspeção |
+| `action` | `"tunnel-up"` | O veredito. `accept` permitiu, `deny` barrou, `close` encerrou normalmente, `timeout` expirou, `blocked` foi barrado pela inspeção |
+| `user` | `"maria.costa"` | Conta autenticada — o que transforma "um IP" em "uma pessoa" |
+| `remip` | `198.51.100.77` | IP público **remoto** do outro lado do túnel — de onde o usuário ou o peer veio |
+| `assignip` | `10.99.5.34` | **O IP interno que a empresa emprestou** à máquina remota. Depois de o túnel subir, é este endereço que aparece no tráfego interno, e não o `remip` |
+| `tunneltype` | `"ssl-web"` | Tecnologia do túnel: `ssl-web` é o portal no navegador, `ssl-tunnel` é o cliente, `ipsec` é site-a-site |
+| `duration` | `0` | Duração da sessão em **segundos** |
+| `msg` | `"SSL VPN tunnel up"` | Texto livre com a descrição legível. **Não use este campo em regras** — muda entre versões |
+| — | — | Aqui o `action` é a chave: `ssl-login-fail` com `reason` de permissão negada. Dezenas destes do mesmo `remip`, com `user` diferente em cada, é *password spraying* |
+
+</details>
+
 ```
 %ASA-6-302013: Built inbound TCP connection 88213 for outside:198.51.100.77/51422 (198.51.100.77/51422) to inside:10.10.20.5/445 (10.10.20.5/445)
 ```
+
+<details><summary>Ver legenda</summary>
+
+| Campo | Valor no exemplo | O que significa |
+|---|---|---|
+| `%ASA` | `%ASA` | Etiqueta do produto: identifica a linha como vinda de um firewall ASA |
+| severidade | `6` | Escala syslog do Cisco, de 0 (emergência) a 7 (depuração): `6` é **informational**. **Severidade baixa não quer dizer evento sem importância** — quem a escolhe é o fabricante, não o seu SOC |
+| *message ID* | `302013` | Conexão TCP construída — entrou na tabela de estado. **É por este número que se escreve a regra no SIEM**: o texto da mensagem muda entre versões do software, o ID não |
+| direção | `inbound` | **Quem iniciou**, não a direção dos bytes: `outbound` é de dentro para fora, `inbound` é de fora para dentro |
+| id da conexão | `88213` | Número da conexão na tabela de estado. **É a chave para casar com o `302014`** que a encerra |
+| lado remoto | `outside:198.51.100.77/51422` | Interface, IP e porta do host **remoto**. Vem primeiro, logo depois do `for` — é isso que faz a linha parecer invertida |
+| *(entre parênteses)* | `(198.51.100.77/51422)` | O endereço **traduzido** desse lado. Igual ao real significa que não houve NAT nesta ponta |
+| lado local | `inside:10.10.20.5/445` | Interface, IP e porta do host **local**, antes da tradução |
+| *(entre parênteses)* | `(10.10.20.5/445)` | O endereço com que o host local saiu. **Este par — IP público mais porta — é o que desfaz o NAT** num pedido externo |
+| — | — | `198.51.100.77` é o **IP público da casa** do usuário, o mesmo `remip` do log de VPN acima. Depois de o túnel subir, o tráfego interno passa a aparecer com o IP do *pool*, não com este — e é aí que se perde o rastro se os dois não forem correlacionados |
+
+</details>
 
 Campos: `remip` é o IP público da casa; `assignip` é o IP que a empresa emprestou para a máquina; `tunneltype` mostra a tecnologia; no ASA, `302013` significa conexão TCP construída, com origem `outside` e destino interno na porta 445 (SMB).
 
@@ -536,6 +770,8 @@ Campos: `remip` é o IP público da casa; `assignip` é o IP que a empresa empre
 2 123456789012 eni-0ab12cd34ef56 192.0.2.203 10.30.1.10 41522 22 6 24 3120 1756890000 1756890060 REJECT OK
 ```
 
+<details><summary>Ver legenda</summary>
+
 | Posição | Campo | Valor | Leitura |
 |---|---|---|---|
 | 1 | version | 2 | Formato do registro |
@@ -548,6 +784,8 @@ Campos: `remip` é o IP público da casa; `assignip` é o IP que a empresa empre
 | 11-12 | start / end | epoch | Janela agregada (não é pacote a pacote) |
 | 13 | action | REJECT | Bloqueado por SG ou NACL |
 | 14 | log-status | OK | Registro completo |
+
+</details>
 
 **O que o SOC N1 observa:** normal é `ACCEPT` na 22 apenas do IP corporativo para o bastion. Suspeito é rajada de `REJECT` na 22 vinda de vários IPs (varredura, T1046) ou — pior — `ACCEPT` de db01 (10.30.10.30) direto para a internet, o que indica exfiltração (T1041).
 
