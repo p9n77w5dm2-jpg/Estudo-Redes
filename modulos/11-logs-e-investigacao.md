@@ -672,7 +672,7 @@ date=2026-09-03 time=14:31:02 devname="FGT-BR-01" type="traffic" subtype="forwar
 **Squid access.log:**
 
 ```
-1756908672.431   1842 10.10.20.55 TCP_MISS/200 148920 GET http://cdn.example.com/atualiza.exe jsilva DIRECT/203.0.113.44 application/octet-stream
+1756908672.431   1842 10.10.20.55 TCP_MISS/200 148920 GET http://cdn.example.com/atualiza.exe jsilva HIER_DIRECT/203.0.113.44 application/octet-stream
 ```
 
 <details><summary>Ver legenda</summary>
@@ -687,7 +687,7 @@ date=2026-09-03 time=14:31:02 devname="FGT-BR-01" type="traffic" subtype="forwar
 | método | `GET` | Pedido de leitura |
 | URL | `http://cdn.example.com/atualiza.exe` | **HTTP em claro entregando um `.exe`** — nome de arquivo em português a fingir atualização |
 | usuário | `jsilva` | A conta autenticada: já se sabe a pessoa, não só a máquina |
-| hierarquia/destino | `DIRECT/203.0.113.44` | O IP de onde veio o binário — é o que se cruza com o firewall |
+| hierarquia/destino | `HIER_DIRECT/203.0.113.44` | O IP de onde veio o binário — é o que se cruza com o firewall |
 | tipo de conteúdo | `application/octet-stream` | MIME de binário genérico |
 
 </details>

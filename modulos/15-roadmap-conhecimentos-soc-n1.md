@@ -522,7 +522,7 @@ Sep 03 14:22:11 fw01 1,2026/09/03 14:22:11,014201007777,TRAFFIC,end,2562,2026/09
 | 8 / 9 | Source / Destination Address | `10.10.24.57` / `203.0.113.44` | Origem interna e destino externo |
 | 10 / 11 | NAT Source / Destination IP | `192.0.2.10` / `203.0.113.44` | Endereço público de saída e destino |
 | 12 | Rule Name | `regra-saida-internet` | A regra que permitiu |
-| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 / 14 | Source / Destination User | `jsilva` / *(vazio)* | Usuário resolvido; o de destino vem vazio, como é normal em tráfego de saída |
 | 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
 | 17 / 18 | Source / Destination Zone | `Interna` / `Externa` | O sentido do tráfego |
 | 19 / 20 | Inbound / Outbound Interface | `ae1.24` / `ae1.10` | Subinterfaces de *port-channel* |

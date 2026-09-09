@@ -207,6 +207,24 @@ main { background:var(--bg); min-width:0; }
   .paginacao { flex-direction:column; }
   .paginacao button { max-width:none; }
 }
+/* --- leitura no PC: faixa mais larga, com folga a direita ---
+   So a partir de 1200px; celular e tablet ficam como estavam. A prosa para de
+   crescer antes de cansar o olho; tabelas, logs e gabaritos usam a faixa toda,
+   que e onde a largura extra faz falta. Todos partilham a margem esquerda. */
+@media (min-width: 1200px) {
+  .corpo {
+    max-width:none;
+    margin-left:clamp(40px, 4.5vw, 104px);
+    margin-right:clamp(96px, 14vw, 320px);
+    padding:44px 0 96px;
+  }
+  .crumb, .sumario, .paginacao,
+  .doc > h1, .doc > h2, .doc > h3, .doc > h4,
+  .doc > p, .doc > ul, .doc > ol, .doc > blockquote, .doc > hr {
+    max-width:92ch;
+  }
+  .tabela-wrap, .doc > pre, .doc > details { max-width:none; }
+}
 @media (prefers-reduced-motion: reduce) { * { transition:none !important; } }
 </style>
 
@@ -3270,7 +3288,9 @@ Linha 1 filtra ICMP no Zeek; linha 2 conta destinos distintos por origem; linha 
 | `2026-09-03T10:40:02.221Z` | TIMESTAMP | ISO 8601 em UTC |
 | `sw-core-01.corp.local` | HOSTNAME | O switch de núcleo que detectou |
 | `dot1x` | APP-NAME | O subsistema que emitiu |
+| `-` | PROCID | Vazio: o switch não informa identificador de processo |
 | `ARP-INSPECT` | MSGID | **Dynamic ARP Inspection** — é este identificador que se filtra no SIEM |
+| `[meta]` | STRUCTURED-DATA | **É este bloco, e não texto livre.** O switch marca a seção mas não a preenche com pares chave=valor; o conteúdo real vem todo na MSG a seguir |
 | `Gi1/0/14 vlan 20` | MSG · localização | A porta física e a VLAN onde o ARP forjado apareceu: diz **onde ir procurar o equipamento** |
 | `sender_ip=10.10.20.1` | MSG · IP reivindicado | O IP que a resposta ARP diz ser. **É o gateway** — daí a gravidade |
 | `sender_mac=00:1a:2b:3c:4d:99` | MSG · MAC que respondeu | O MAC que se está a fazer passar pelo gateway |
@@ -6016,7 +6036,7 @@ Failure Code:      0x25
 | `Source` | `Microsoft-Windows-Security-Auditing` | Provedor que gerou o evento |
 | `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.7.30` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.7.30` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Failure Code` | `0x25` | **Código de falha do Kerberos.** `0x25` = **relógio fora de sincronia** entre cliente e DC (o Kerberos tolera poucos minutos) |
 
 </details>
@@ -7018,7 +7038,7 @@ date=2026-09-03 time=03:41:07 devname="FGT-CORP-01" type="traffic" subtype="forw
 | 8 / 9 | Source / Destination Address | `203.0.113.77` / `10.10.50.12` | **Origem externa, destino interno**: sessão de *entrada*, ao contrário dos exemplos anteriores |
 | 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `10.10.50.12` | Sem NAT na origem; no destino, o IP interno após a tradução do publicado |
 | 12 | Rule Name | `Permite-DMZ` | A regra que permitiu a entrada |
-| 13 / 14 | Source / Destination User | `-` / `-` | **Sem usuário nos dois.** É esperado: o User-ID não conhece quem vem da Internet |
+| 13 / 14 | Source / Destination User | *(vazio)* / *(vazio)* | **Sem usuário nos dois.** É esperado: o User-ID não conhece quem vem da Internet |
 | 15 | Application | `ms-rdp` | App-ID identificou **RDP** — área de trabalho remota |
 | 16 | Virtual System | `vsys1` | Firewall virtual |
 | 17 / 18 | Source / Destination Zone | `Untrust` / `DMZ` | Da Internet para a DMZ |
@@ -8805,9 +8825,9 @@ Um log de proxy é o extrato bancário da navegação da empresa. Assim como o e
 O Squid é um proxy livre, muito usado em laboratório e em ambientes menores. O formato nativo é simples e sem cabeçalho, o que assusta no começo.
 
 ```
-1725362410.482    312 10.10.20.45 TCP_MISS/200 18422 GET http://portal.example.com/index.html jsilva DIRECT/203.0.113.20 text/html
-1725362488.117     44 10.10.20.45 TCP_DENIED/403 3894 GET http://jogos.example.com/ jsilva NONE/- text/html
-1725362533.905   1180 10.10.20.45 TCP_MISS/200 4194304 GET http://cdn-update.example.com/setup.exe jsilva DIRECT/198.51.100.77 application/octet-stream
+1725362410.482    312 10.10.20.45 TCP_MISS/200 18422 GET http://portal.example.com/index.html jsilva HIER_DIRECT/203.0.113.20 text/html
+1725362488.117     44 10.10.20.45 TCP_DENIED/403 3894 GET http://jogos.example.com/ jsilva HIER_NONE/- text/html
+1725362533.905   1180 10.10.20.45 TCP_MISS/200 4194304 GET http://cdn-update.example.com/setup.exe jsilva HIER_DIRECT/198.51.100.77 application/octet-stream
 ```
 
 <details><summary>Ver legenda</summary>
@@ -8822,7 +8842,7 @@ O Squid é um proxy livre, muito usado em laboratório e em ambientes menores. O
 | 6 | `GET` | Método HTTP |
 | 7 | `http://...` | URL completa (em HTTPS sem inspeção aparece só `host:443`) |
 | 8 | `jsilva` | Usuário autenticado no proxy |
-| 9 | `DIRECT/203.0.113.20` | Como o Squid buscou o objeto e o IP de destino real |
+| 9 | `HIER_DIRECT/203.0.113.20` | Como o Squid buscou o objeto e o IP de destino real |
 | 10 | `text/html` | Content-Type devolvido |
 
 </details>
@@ -8940,9 +8960,9 @@ NetskopeAlerts_CL
 ### Cenário 4 — Acesso repetido a categoria bloqueada
 
 ```
-1725367001.220 12 10.10.20.45 TCP_DENIED/403 3894 GET http://proxy-livre.example.com/ jsilva NONE/- text/html
-1725367014.880 11 10.10.20.45 TCP_DENIED/403 3894 GET http://tunel-web.example.com/ jsilva NONE/- text/html
-1725367029.640 10 10.10.20.45 TCP_DENIED/403 3894 GET http://anon-browse.example.com/ jsilva NONE/- text/html
+1725367001.220 12 10.10.20.45 TCP_DENIED/403 3894 GET http://proxy-livre.example.com/ jsilva HIER_NONE/- text/html
+1725367014.880 11 10.10.20.45 TCP_DENIED/403 3894 GET http://tunel-web.example.com/ jsilva HIER_NONE/- text/html
+1725367029.640 10 10.10.20.45 TCP_DENIED/403 3894 GET http://anon-browse.example.com/ jsilva HIER_NONE/- text/html
 ```
 
 <details><summary>Ver legenda</summary>
@@ -8957,7 +8977,7 @@ NetskopeAlerts_CL
 | método | `GET` | Pedido de leitura |
 | URL | `proxy-livre.example.com`, `tunel-web.example.com`, `anon-browse.example.com` | **Três domínios diferentes, todos da mesma categoria.** Isso separa erro de clique de tentativa deliberada |
 | usuário | `jsilva` | A mesma conta autenticada nas três — não há dúvida sobre quem foi |
-| hierarquia/destino | `NONE/-` | Nada saiu para a Internet |
+| hierarquia/destino | `HIER_NONE/-` | Nada saiu para a Internet |
 | tipo de conteúdo | `text/html` | A página de bloqueio devolvida |
 
 </details>
@@ -8992,9 +9012,9 @@ DeviceNetworkEvents
 ### Cenário 6 — IP direto e beaconing
 
 ```
-1725370800.101 90 10.10.20.45 TCP_TUNNEL/200 512 CONNECT 192.0.2.66:443 jsilva DIRECT/192.0.2.66 -
-1725371100.104 88 10.10.20.45 TCP_TUNNEL/200 516 CONNECT 192.0.2.66:443 jsilva DIRECT/192.0.2.66 -
-1725371400.099 91 10.10.20.45 TCP_TUNNEL/200 510 CONNECT 192.0.2.66:443 jsilva DIRECT/192.0.2.66 -
+1725370800.101 90 10.10.20.45 TCP_TUNNEL/200 512 CONNECT 192.0.2.66:443 jsilva HIER_DIRECT/192.0.2.66 -
+1725371100.104 88 10.10.20.45 TCP_TUNNEL/200 516 CONNECT 192.0.2.66:443 jsilva HIER_DIRECT/192.0.2.66 -
+1725371400.099 91 10.10.20.45 TCP_TUNNEL/200 510 CONNECT 192.0.2.66:443 jsilva HIER_DIRECT/192.0.2.66 -
 ```
 
 Duas anomalias juntas: destino é IP puro, sem nome de domínio (navegador de gente quase sempre usa nome), e o intervalo é de exatamente 300 segundos, com bytes quase idênticos. Isso é *beaconing* — o padrão de um agente de comando e controle "batendo ponto". MITRE T1071.001 (*Application Layer Protocol: Web Protocols*).
@@ -9935,7 +9955,7 @@ Impersonation Level: Impersonation
 | `Source Port` | `51544` | Porta de origem, efêmera |
 | `Logon Process` | `Kerberos` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
 | `Authentication Package` | `Kerberos` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
-| `Impersonation Level` | `Impersonation` | Até onde o processo pode agir em nome do utilizador |
+| `Impersonation Level` | `Impersonation` | Até onde o processo pode agir em nome do usuário |
 
 </details>
 
@@ -10669,7 +10689,7 @@ Failure Code:        0x0
 | `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `svc_backup` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
 | `Service ID` | `CORP\svc_backup` | SID do serviço |
-| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
@@ -10723,7 +10743,7 @@ Result Code:             0x0
 | `EventID` | `4768` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio |
 | `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
 
@@ -10800,7 +10820,7 @@ Ticket Encryption Type: 0x17
 | `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
 | `Account Name` | `backup_svc_adm@CORP.LOCAL      <-- conta que não existe no AD` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `cifs/fs01.corp.local` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.30.91` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.30.91` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 
@@ -10835,10 +10855,10 @@ Access Mask:          0x100
 |---|---|---|
 | `EventID` | `4662` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4662` = operação sobre objeto do Active Directory |
 | `Subject Account Name` | `jsilva` | A conta que **pediu** a ação |
-| `Object Server` | `DS` | Componente que atendeu o acesso — normalmente `Security` |
-| `Object Type` | `%{19195a5b-6da0-11d0-afd3-00c04fd930c9}` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Object Server` | `DS` | Componente que atendeu o acesso. **`DS` é o esperado aqui**: identifica o Directory Service do AD. Em acesso a arquivo (5140) este campo vem `Security` |
+| `Object Type` | `%{19195a5b-6da0-11d0-afd3-00c04fd930c9}` | **Classe do objeto no esquema do AD**, aqui pelo GUID em vez do nome. Não confundir com o `Object Type` do evento 5140, que é `File` ou `Directory`: no 4662 o alvo é um objeto do diretório, não um arquivo |
 | `Properties` | `Control Access` | Atributos do objeto que foram tocados |
-| `Access Mask` | `0x100` | Permissões pedidas em bits: `0x1` leitura, `0x2` escrita, `0x4` acrescentar |
+| `Access Mask` | `0x100` | Permissões pedidas em bits. **`0x100` é *Control Access*** — um direito estendido, e não leitura ou escrita comum. É a máscara que aparece quando se exerce uma permissão especial como a de replicação. Os bits `0x1`/`0x2`/`0x4` (ler/escrever/acrescentar) são os de acesso a arquivo, do evento 5140 |
 | *(hora na linha do cabeçalho)* | `2026-03-11 03:12:44` | Como no exemplo anterior, a hora vem colada ao `EventID` por formatação de exportação, e não como campo |
 
 </details>
@@ -10882,7 +10902,7 @@ EventID=4771  Account Name: svc_backup    Failure Code: 0x18  Client Address: 20
 | `Status` | `0xC000006A` | Código geral do resultado. `0xC000006A` = **senha errada** |
 | `Source` | `203.0.113.45` | Provedor que gerou o evento |
 | `Failure Code` | `0x18` | **Código de falha do Kerberos.** `0x18` = **senha errada** — é o código de falha mais comum em spraying |
-| `Client Address` | `203.0.113.45` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `203.0.113.45` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 
 </details>
 
@@ -11206,7 +11226,7 @@ Accesses: Control Access
 | `EventID` | `4662` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
 | `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
 | `Subject Account Name` | `jsilva` | A conta que **pediu** a ação |
-| `Object Type` | `domainDNS` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Object Type` | `domainDNS` | **Classe do objeto no esquema do AD** — `domainDNS` é a raiz do domínio. É o alvo natural do DCSync, porque as permissões de replicação vivem nela. Não é o `Object Type` de arquivo do evento 5140 |
 | `Properties` | `Control Access {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}` | Atributos do objeto que foram tocados |
 | `Accesses` | `Control Access` | As permissões pedidas, em texto |
 
@@ -11983,7 +12003,7 @@ date=2026-09-03 time=14:31:02 devname="FGT-BR-01" type="traffic" subtype="forwar
 **Squid access.log:**
 
 ```
-1756908672.431   1842 10.10.20.55 TCP_MISS/200 148920 GET http://cdn.example.com/atualiza.exe jsilva DIRECT/203.0.113.44 application/octet-stream
+1756908672.431   1842 10.10.20.55 TCP_MISS/200 148920 GET http://cdn.example.com/atualiza.exe jsilva HIER_DIRECT/203.0.113.44 application/octet-stream
 ```
 
 <details><summary>Ver legenda</summary>
@@ -11998,7 +12018,7 @@ date=2026-09-03 time=14:31:02 devname="FGT-BR-01" type="traffic" subtype="forwar
 | método | `GET` | Pedido de leitura |
 | URL | `http://cdn.example.com/atualiza.exe` | **HTTP em claro entregando um `.exe`** — nome de arquivo em português a fingir atualização |
 | usuário | `jsilva` | A conta autenticada: já se sabe a pessoa, não só a máquina |
-| hierarquia/destino | `DIRECT/203.0.113.44` | O IP de onde veio o binário — é o que se cruza com o firewall |
+| hierarquia/destino | `HIER_DIRECT/203.0.113.44` | O IP de onde veio o binário — é o que se cruza com o firewall |
 | tipo de conteúdo | `application/octet-stream` | MIME de binário genérico |
 
 </details>
@@ -13040,7 +13060,7 @@ FUTURE_USE,2026/09/03 09:14:22,001801012345,TRAFFIC,end,2560,2026/09/03 09:14:22
 | 8 / 9 | Source / Destination Address | `10.10.20.57` / `10.10.20.15` | **Origem e destino na mesma sub-rede**: é tráfego interno |
 | 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | Sem NAT, como se espera em tráfego lado a lado |
 | 12 | Rule Name | `rule-lan-lan` | A regra que trata tráfego LAN para LAN |
-| 13 / 14 | Source / Destination User | `-` / `-` | Sem usuário resolvido |
+| 13 / 14 | Source / Destination User | *(vazio)* / *(vazio)* | Sem usuário resolvido. **No CSV vêm duas vírgulas seguidas**, sem caractere nenhum — não é um traço literal |
 | 15 | Application | `incomplete` | **O campo mais importante deste exemplo.** `incomplete` significa que o handshake TCP **nunca completou**, logo o App-ID não teve conteúdo para identificar. É a assinatura de varredura ou de host que não respondeu |
 | 16 | Virtual System | `vsys1` | Firewall virtual |
 | 17 / 18 | Source / Destination Zone | `LAN` / `LAN` | Mesma zona nos dois lados |
@@ -14992,7 +15012,7 @@ Jan 14 03:12:44 fw-core-01 1,2026/01/14 03:12:44,001801021234,TRAFFIC,end,2560,2
 | 8 / 9 | Source / Destination Address | `10.10.42.15` / `203.0.113.77` | Origem interna e destino externo |
 | 10 / 11 | NAT Source / Destination IP | `192.0.2.9` / `203.0.113.77` | Endereço público de saída e destino |
 | 12 | Rule Name | `Permit-Web` | A regra que permitiu |
-| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 / 14 | Source / Destination User | `jsilva` / *(vazio)* | Usuário resolvido; o de destino vem vazio, como é normal em tráfego de saída |
 | 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
 | 17 / 18 | Source / Destination Zone | `TRUST` / `UNTRUST` | O sentido do tráfego |
 | 19 / 20 | Inbound / Outbound Interface | `ae1.100` / `ae1.200` | Subinterfaces de *port-channel* |
@@ -15283,7 +15303,7 @@ EventID=4771  Kerberos pre-authentication failed.
 | `EventID` | `4771  Kerberos pre-authentication failed.` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
 | `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:198.51.100.42` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:198.51.100.42` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Failure Code` | `0x18` | **Código de falha do Kerberos.** `0x18` = **senha errada** — é o código de falha mais comum em spraying |
 
 </details>
@@ -16347,7 +16367,7 @@ Sep 03 14:22:11 fw01 1,2026/09/03 14:22:11,014201007777,TRAFFIC,end,2562,2026/09
 | 8 / 9 | Source / Destination Address | `10.10.24.57` / `203.0.113.44` | Origem interna e destino externo |
 | 10 / 11 | NAT Source / Destination IP | `192.0.2.10` / `203.0.113.44` | Endereço público de saída e destino |
 | 12 | Rule Name | `regra-saida-internet` | A regra que permitiu |
-| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 / 14 | Source / Destination User | `jsilva` / *(vazio)* | Usuário resolvido; o de destino vem vazio, como é normal em tráfego de saída |
 | 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
 | 17 / 18 | Source / Destination Zone | `Interna` / `Externa` | O sentido do tráfego |
 | 19 / 20 | Inbound / Outbound Interface | `ae1.24` / `ae1.10` | Subinterfaces de *port-channel* |
@@ -17884,7 +17904,7 @@ Result Code:         0x0
 | `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Supplied Realm Name` | `CORP.LOCAL` | O *realm* Kerberos que o cliente declarou |
 | `Service Name` | `krbtgt` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810010` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
 | `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
@@ -17914,7 +17934,7 @@ Failure Code:      0x0
 | `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
 | `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `WKS01$` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Encryption` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
 | `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
 
@@ -19100,7 +19120,7 @@ Campos: origem `10.10.4.87`, destino `203.0.113.45`, usuário `CORP\jsilva`, apl
 # Squid access.log
 1756907231.482  312 10.10.4.87 TCP_MISS/200 41822 GET
 http://arquivos.empresa-exemplo.com.br/relatorio.zip jsilva
-DIRECT/198.51.100.77 application/zip
+HIER_DIRECT/198.51.100.77 application/zip
 
 # Zscaler NSS (resumido)
 2026-09-03 14:41:10 user=maria.costa@example.com action=blocked
@@ -19118,7 +19138,7 @@ reqmethod=POST reqsize=118 respsize=0 useragent=curl/8.4.0 clientip=10.10.7.22
 | Squid · resultado/status | `TCP_MISS/200` | Buscou na origem e recebeu 200 OK |
 | Squid · bytes | `41822` | 41 KB entregues |
 | Squid · URL e usuário | `…/relatorio.zip` · `jsilva` | O recurso e a conta autenticada no proxy |
-| Squid · hierarquia | `DIRECT/198.51.100.77` | Foi direto à origem |
+| Squid · hierarquia | `HIER_DIRECT/198.51.100.77` | Foi direto à origem |
 | Zscaler · `action` | `blocked` | O veredito da política |
 | Zscaler · `url` | `hxxp://cdn-update.example-mal.test/panel.php` | O destino. Escrito `hxxp` de propósito, para o link não ser clicável em relatório |
 | Zscaler · `urlcategory` | `Newly_Registered_Domains` | **Domínio registrado há dias.** Infraestrutura de ataque é nova por natureza — é das categorias mais úteis para triagem |
@@ -19202,7 +19222,7 @@ EventID 4769  Account Name: jsilva@CORP.LOCAL  Service Name: MSSQLSvc/db01.corp.
 | `EventID` | `4768` / `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio; `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
 | `Account Name` | `jsilva` / `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt` / `MSSQLSvc/db01.corp.local` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `10.10.4.87` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `10.10.4.87` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Encryption Type` | `0x12` / `0x17` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno; `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
 
@@ -20089,7 +20109,7 @@ Sep 03 09:14:22 fw-core-01 1,2026/09/03 09:14:22,001801099999,TRAFFIC,end,2561,2
 | 8 / 9 | Source / Destination Address | `10.10.20.37` / `203.0.113.45` | Origem interna e destino externo |
 | 10 / 11 | NAT Source / Destination IP | `192.0.2.10` / `203.0.113.45` | Endereço público de saída e destino |
 | 12 | Rule Name | `Regra-Saida-Web` | A regra que permitiu |
-| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 / 14 | Source / Destination User | `jsilva` / *(vazio)* | Usuário resolvido; o de destino vem vazio, como é normal em tráfego de saída |
 | 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
 | 17 / 18 | Source / Destination Zone | `Interna` / `Externa` | O sentido do tráfego |
 | 19 / 20 | Inbound / Outbound Interface | `ae1.20` / `ae1.10` | Subinterfaces de *port-channel* |
@@ -20099,7 +20119,7 @@ Sep 03 09:14:22 fw-core-01 1,2026/09/03 09:14:22,001801099999,TRAFFIC,end,2561,2
 | 27 / 28 | NAT Source / Destination Port | `41255` / `443` | Portas após tradução |
 | 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits, protocolo e veredito |
 | 32 / 33 / 34 / 35 | Bytes / Sent / Received / Packets | `18422` / `4210` / `14212` / `54` | Volume total, por direção, e pacotes |
-| 36 | Category | `ANY` | Sem categoria de URL atribuída |
+| *(último campo)* | Category | `ANY` | Sem categoria de URL atribuída. **Atenção à posição**: esta linha tem 36 campos e acaba aqui, mas na ordem real do PAN-OS a `Category` é a posição **38** — o exemplo saltou `Start Time` (36) e `Elapsed Time` (37). Num log verdadeiro, contar até 36 dá o horário de início, não a categoria |
 
 </details>
 
@@ -20453,7 +20473,7 @@ Failure Code:        0x0
 | `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
 | `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `svc_backup` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.20.45` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.20.45` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
@@ -20826,7 +20846,7 @@ index=proxy sourcetype=squid:access          `` fonte de log do proxy ``
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
 <script>
 (function () {
-  var IDX = [{"s": "01-fundamentos-de-redes", "t": "Fundamentos de Redes", "n": "1", "p": 11276}, {"s": "02a-modelo-osi-camadas-1-3", "t": "Modelo OSI — camadas 1 a 3", "n": "2·1", "p": 9732}, {"s": "02b-modelo-osi-camadas-4-7", "t": "Modelo OSI — camadas 4 a 7", "n": "2·2", "p": 10077}, {"s": "03-tcp-ip", "t": "TCP/IP e packet flow", "n": "3", "p": 9542}, {"s": "04-enderecamento-ip", "t": "Endereçamento IP e subnetting", "n": "4", "p": 10388}, {"s": "05-dns", "t": "DNS", "n": "5", "p": 12143}, {"s": "06a-portas-e-protocolos-parte-1", "t": "Portas e protocolos — 20 a 161", "n": "6·1", "p": 8220}, {"s": "06b-portas-e-protocolos-parte-2", "t": "Portas e protocolos — 389 a 8080", "n": "6·2", "p": 12559}, {"s": "07-firewalls", "t": "Firewalls", "n": "7", "p": 11710}, {"s": "08-proxies", "t": "Proxies e segurança web", "n": "8", "p": 8157}, {"s": "09-vpn", "t": "VPN", "n": "9", "p": 11538}, {"s": "10-active-directory", "t": "Active Directory", "n": "10", "p": 13766}, {"s": "11-logs-e-investigacao", "t": "Logs e investigação", "n": "11", "p": 12485}, {"s": "12-wireshark", "t": "Wireshark", "n": "12", "p": 9699}, {"s": "13-network-security", "t": "IDS, IPS, NDR, SIEM e EDR", "n": "13", "p": 9814}, {"s": "14-ameacas-comuns", "t": "Ameaças comuns", "n": "14", "p": 16315}, {"s": "15-roadmap-conhecimentos-soc-n1", "t": "Mapa de conhecimentos", "n": "15", "p": 10109}, {"s": "16a-laboratorios-wireshark-linux", "t": "Labs — Wireshark e Linux", "n": "16·1", "p": 7898}, {"s": "16b-laboratorios-windows-active-directory", "t": "Labs — Windows e AD", "n": "16·2", "p": 13095}, {"s": "17-checklist-entrevista-soc", "t": "Checklist de entrevista", "n": "17", "p": 13940}, {"s": "18-roadmap-90-dias", "t": "Roadmap de 90 dias", "n": "18", "p": 15098}];
+  var IDX = [{"s": "01-fundamentos-de-redes", "t": "Fundamentos de Redes", "n": "1", "p": 11276}, {"s": "02a-modelo-osi-camadas-1-3", "t": "Modelo OSI — camadas 1 a 3", "n": "2·1", "p": 9732}, {"s": "02b-modelo-osi-camadas-4-7", "t": "Modelo OSI — camadas 4 a 7", "n": "2·2", "p": 10077}, {"s": "03-tcp-ip", "t": "TCP/IP e packet flow", "n": "3", "p": 9590}, {"s": "04-enderecamento-ip", "t": "Endereçamento IP e subnetting", "n": "4", "p": 10388}, {"s": "05-dns", "t": "DNS", "n": "5", "p": 12143}, {"s": "06a-portas-e-protocolos-parte-1", "t": "Portas e protocolos — 20 a 161", "n": "6·1", "p": 8237}, {"s": "06b-portas-e-protocolos-parte-2", "t": "Portas e protocolos — 389 a 8080", "n": "6·2", "p": 12559}, {"s": "07-firewalls", "t": "Firewalls", "n": "7", "p": 11710}, {"s": "08-proxies", "t": "Proxies e segurança web", "n": "8", "p": 8157}, {"s": "09-vpn", "t": "VPN", "n": "9", "p": 11538}, {"s": "10-active-directory", "t": "Active Directory", "n": "10", "p": 13950}, {"s": "11-logs-e-investigacao", "t": "Logs e investigação", "n": "11", "p": 12485}, {"s": "12-wireshark", "t": "Wireshark", "n": "12", "p": 9714}, {"s": "13-network-security", "t": "IDS, IPS, NDR, SIEM e EDR", "n": "13", "p": 9814}, {"s": "14-ameacas-comuns", "t": "Ameaças comuns", "n": "14", "p": 16344}, {"s": "15-roadmap-conhecimentos-soc-n1", "t": "Mapa de conhecimentos", "n": "15", "p": 10121}, {"s": "16a-laboratorios-wireshark-linux", "t": "Labs — Wireshark e Linux", "n": "16·1", "p": 7898}, {"s": "16b-laboratorios-windows-active-directory", "t": "Labs — Windows e AD", "n": "16·2", "p": 13129}, {"s": "17-checklist-entrevista-soc", "t": "Checklist de entrevista", "n": "17", "p": 13957}, {"s": "18-roadmap-90-dias", "t": "Roadmap de 90 dias", "n": "18", "p": 15176}];
   var docs = {}, atual = null;
   document.querySelectorAll("script.md").forEach(function (s) { docs[s.dataset.mod] = s.textContent; });
 

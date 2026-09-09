@@ -527,7 +527,7 @@ FUTURE_USE,2026/09/03 09:14:22,001801012345,TRAFFIC,end,2560,2026/09/03 09:14:22
 | 8 / 9 | Source / Destination Address | `10.10.20.57` / `10.10.20.15` | **Origem e destino na mesma sub-rede**: é tráfego interno |
 | 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `0.0.0.0` | Sem NAT, como se espera em tráfego lado a lado |
 | 12 | Rule Name | `rule-lan-lan` | A regra que trata tráfego LAN para LAN |
-| 13 / 14 | Source / Destination User | `-` / `-` | Sem usuário resolvido |
+| 13 / 14 | Source / Destination User | *(vazio)* / *(vazio)* | Sem usuário resolvido. **No CSV vêm duas vírgulas seguidas**, sem caractere nenhum — não é um traço literal |
 | 15 | Application | `incomplete` | **O campo mais importante deste exemplo.** `incomplete` significa que o handshake TCP **nunca completou**, logo o App-ID não teve conteúdo para identificar. É a assinatura de varredura ou de host que não respondeu |
 | 16 | Virtual System | `vsys1` | Firewall virtual |
 | 17 / 18 | Source / Destination Zone | `LAN` / `LAN` | Mesma zona nos dois lados |

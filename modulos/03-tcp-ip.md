@@ -458,7 +458,9 @@ Linha 1 filtra ICMP no Zeek; linha 2 conta destinos distintos por origem; linha 
 | `2026-09-03T10:40:02.221Z` | TIMESTAMP | ISO 8601 em UTC |
 | `sw-core-01.corp.local` | HOSTNAME | O switch de núcleo que detectou |
 | `dot1x` | APP-NAME | O subsistema que emitiu |
+| `-` | PROCID | Vazio: o switch não informa identificador de processo |
 | `ARP-INSPECT` | MSGID | **Dynamic ARP Inspection** — é este identificador que se filtra no SIEM |
+| `[meta]` | STRUCTURED-DATA | **É este bloco, e não texto livre.** O switch marca a seção mas não a preenche com pares chave=valor; o conteúdo real vem todo na MSG a seguir |
 | `Gi1/0/14 vlan 20` | MSG · localização | A porta física e a VLAN onde o ARP forjado apareceu: diz **onde ir procurar o equipamento** |
 | `sender_ip=10.10.20.1` | MSG · IP reivindicado | O IP que a resposta ARP diz ser. **É o gateway** — daí a gravidade |
 | `sender_mac=00:1a:2b:3c:4d:99` | MSG · MAC que respondeu | O MAC que se está a fazer passar pelo gateway |

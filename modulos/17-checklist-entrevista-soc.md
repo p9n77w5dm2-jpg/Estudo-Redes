@@ -359,7 +359,7 @@ Campos: origem `10.10.4.87`, destino `203.0.113.45`, usuário `CORP\jsilva`, apl
 # Squid access.log
 1756907231.482  312 10.10.4.87 TCP_MISS/200 41822 GET
 http://arquivos.empresa-exemplo.com.br/relatorio.zip jsilva
-DIRECT/198.51.100.77 application/zip
+HIER_DIRECT/198.51.100.77 application/zip
 
 # Zscaler NSS (resumido)
 2026-09-03 14:41:10 user=maria.costa@example.com action=blocked
@@ -377,7 +377,7 @@ reqmethod=POST reqsize=118 respsize=0 useragent=curl/8.4.0 clientip=10.10.7.22
 | Squid · resultado/status | `TCP_MISS/200` | Buscou na origem e recebeu 200 OK |
 | Squid · bytes | `41822` | 41 KB entregues |
 | Squid · URL e usuário | `…/relatorio.zip` · `jsilva` | O recurso e a conta autenticada no proxy |
-| Squid · hierarquia | `DIRECT/198.51.100.77` | Foi direto à origem |
+| Squid · hierarquia | `HIER_DIRECT/198.51.100.77` | Foi direto à origem |
 | Zscaler · `action` | `blocked` | O veredito da política |
 | Zscaler · `url` | `hxxp://cdn-update.example-mal.test/panel.php` | O destino. Escrito `hxxp` de propósito, para o link não ser clicável em relatório |
 | Zscaler · `urlcategory` | `Newly_Registered_Domains` | **Domínio registrado há dias.** Infraestrutura de ataque é nova por natureza — é das categorias mais úteis para triagem |
@@ -461,7 +461,7 @@ EventID 4769  Account Name: jsilva@CORP.LOCAL  Service Name: MSSQLSvc/db01.corp.
 | `EventID` | `4768` / `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio; `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
 | `Account Name` | `jsilva` / `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt` / `MSSQLSvc/db01.corp.local` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `10.10.4.87` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `10.10.4.87` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Encryption Type` | `0x12` / `0x17` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno; `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
 

@@ -856,7 +856,7 @@ Impersonation Level: Impersonation
 | `Source Port` | `51544` | Porta de origem, efêmera |
 | `Logon Process` | `Kerberos` | Componente que processou o logon (`Kerberos`, `NtLmSsp`, `User32`, `Advapi`) |
 | `Authentication Package` | `Kerberos` | Pacote que autenticou: `Kerberos`, `NTLM` ou `Negotiate` |
-| `Impersonation Level` | `Impersonation` | Até onde o processo pode agir em nome do utilizador |
+| `Impersonation Level` | `Impersonation` | Até onde o processo pode agir em nome do usuário |
 
 </details>
 

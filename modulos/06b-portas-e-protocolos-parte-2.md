@@ -692,7 +692,7 @@ date=2026-09-03 time=03:41:07 devname="FGT-CORP-01" type="traffic" subtype="forw
 | 8 / 9 | Source / Destination Address | `203.0.113.77` / `10.10.50.12` | **Origem externa, destino interno**: sessão de *entrada*, ao contrário dos exemplos anteriores |
 | 10 / 11 | NAT Source / Destination IP | `0.0.0.0` / `10.10.50.12` | Sem NAT na origem; no destino, o IP interno após a tradução do publicado |
 | 12 | Rule Name | `Permite-DMZ` | A regra que permitiu a entrada |
-| 13 / 14 | Source / Destination User | `-` / `-` | **Sem usuário nos dois.** É esperado: o User-ID não conhece quem vem da Internet |
+| 13 / 14 | Source / Destination User | *(vazio)* / *(vazio)* | **Sem usuário nos dois.** É esperado: o User-ID não conhece quem vem da Internet |
 | 15 | Application | `ms-rdp` | App-ID identificou **RDP** — área de trabalho remota |
 | 16 | Virtual System | `vsys1` | Firewall virtual |
 | 17 / 18 | Source / Destination Zone | `Untrust` / `DMZ` | Da Internet para a DMZ |

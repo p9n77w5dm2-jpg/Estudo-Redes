@@ -393,7 +393,7 @@ Failure Code:      0x25
 | `Source` | `Microsoft-Windows-Security-Auditing` | Provedor que gerou o evento |
 | `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.7.30` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.7.30` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Failure Code` | `0x25` | **Código de falha do Kerberos.** `0x25` = **relógio fora de sincronia** entre cliente e DC (o Kerberos tolera poucos minutos) |
 
 </details>

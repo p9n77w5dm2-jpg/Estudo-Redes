@@ -523,7 +523,7 @@ Result Code:         0x0
 | `Account Name` | `jsilva` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Supplied Realm Name` | `CORP.LOCAL` | O *realm* Kerberos que o cliente declarou |
 | `Service Name` | `krbtgt` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810010` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
 | `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
@@ -553,7 +553,7 @@ Failure Code:      0x0
 | `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
 | `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `WKS01$` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.10.50` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Encryption` | `0x12` | **Cifra do ticket.** `0x12` = **AES256** — o normal num domínio moderno |
 | `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
 

@@ -678,7 +678,7 @@ Jan 14 03:12:44 fw-core-01 1,2026/01/14 03:12:44,001801021234,TRAFFIC,end,2560,2
 | 8 / 9 | Source / Destination Address | `10.10.42.15` / `203.0.113.77` | Origem interna e destino externo |
 | 10 / 11 | NAT Source / Destination IP | `192.0.2.9` / `203.0.113.77` | Endereço público de saída e destino |
 | 12 | Rule Name | `Permit-Web` | A regra que permitiu |
-| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 / 14 | Source / Destination User | `jsilva` / *(vazio)* | Usuário resolvido; o de destino vem vazio, como é normal em tráfego de saída |
 | 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
 | 17 / 18 | Source / Destination Zone | `TRUST` / `UNTRUST` | O sentido do tráfego |
 | 19 / 20 | Inbound / Outbound Interface | `ae1.100` / `ae1.200` | Subinterfaces de *port-channel* |
@@ -969,7 +969,7 @@ EventID=4771  Kerberos pre-authentication failed.
 | `EventID` | `4771  Kerberos pre-authentication failed.` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
 | `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:198.51.100.42` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:198.51.100.42` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Failure Code` | `0x18` | **Código de falha do Kerberos.** `0x18` = **senha errada** — é o código de falha mais comum em spraying |
 
 </details>

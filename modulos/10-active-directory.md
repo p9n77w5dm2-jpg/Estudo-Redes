@@ -606,7 +606,7 @@ Failure Code:        0x0
 | `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `svc_backup` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
 | `Service ID` | `CORP\svc_backup` | SID do serviço |
-| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |
@@ -660,7 +660,7 @@ Result Code:             0x0
 | `EventID` | `4768` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4768` = **TGT** do Kerberos pedido — nasce no controlador de domínio |
 | `Account Name` | `maria.costa` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `krbtgt/CORP.LOCAL` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.20.57` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Result Code` | `0x0` | **Código de resultado do Kerberos.** `0x0` = sucesso |
 
@@ -737,7 +737,7 @@ Ticket Encryption Type: 0x17
 | `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
 | `Account Name` | `backup_svc_adm@CORP.LOCAL      <-- conta que não existe no AD` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `cifs/fs01.corp.local` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.30.91` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.30.91` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 
@@ -772,10 +772,10 @@ Access Mask:          0x100
 |---|---|---|
 | `EventID` | `4662` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4662` = operação sobre objeto do Active Directory |
 | `Subject Account Name` | `jsilva` | A conta que **pediu** a ação |
-| `Object Server` | `DS` | Componente que atendeu o acesso — normalmente `Security` |
-| `Object Type` | `%{19195a5b-6da0-11d0-afd3-00c04fd930c9}` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Object Server` | `DS` | Componente que atendeu o acesso. **`DS` é o esperado aqui**: identifica o Directory Service do AD. Em acesso a arquivo (5140) este campo vem `Security` |
+| `Object Type` | `%{19195a5b-6da0-11d0-afd3-00c04fd930c9}` | **Classe do objeto no esquema do AD**, aqui pelo GUID em vez do nome. Não confundir com o `Object Type` do evento 5140, que é `File` ou `Directory`: no 4662 o alvo é um objeto do diretório, não um arquivo |
 | `Properties` | `Control Access` | Atributos do objeto que foram tocados |
-| `Access Mask` | `0x100` | Permissões pedidas em bits: `0x1` leitura, `0x2` escrita, `0x4` acrescentar |
+| `Access Mask` | `0x100` | Permissões pedidas em bits. **`0x100` é *Control Access*** — um direito estendido, e não leitura ou escrita comum. É a máscara que aparece quando se exerce uma permissão especial como a de replicação. Os bits `0x1`/`0x2`/`0x4` (ler/escrever/acrescentar) são os de acesso a arquivo, do evento 5140 |
 | *(hora na linha do cabeçalho)* | `2026-03-11 03:12:44` | Como no exemplo anterior, a hora vem colada ao `EventID` por formatação de exportação, e não como campo |
 
 </details>
@@ -819,7 +819,7 @@ EventID=4771  Account Name: svc_backup    Failure Code: 0x18  Client Address: 20
 | `Status` | `0xC000006A` | Código geral do resultado. `0xC000006A` = **senha errada** |
 | `Source` | `203.0.113.45` | Provedor que gerou o evento |
 | `Failure Code` | `0x18` | **Código de falha do Kerberos.** `0x18` = **senha errada** — é o código de falha mais comum em spraying |
-| `Client Address` | `203.0.113.45` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `203.0.113.45` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 
 </details>
 
@@ -1143,7 +1143,7 @@ Accesses: Control Access
 | `EventID` | `4662` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não |
 | `Computer` | `DC01.corp.local` | **Onde o evento nasceu.** Em logon, é a máquina onde a sessão acontece — não necessariamente onde a credencial foi validada |
 | `Subject Account Name` | `jsilva` | A conta que **pediu** a ação |
-| `Object Type` | `domainDNS` | Tipo do objeto acedido (`File`, `Directory`, `Key`) |
+| `Object Type` | `domainDNS` | **Classe do objeto no esquema do AD** — `domainDNS` é a raiz do domínio. É o alvo natural do DCSync, porque as permissões de replicação vivem nela. Não é o `Object Type` de arquivo do evento 5140 |
 | `Properties` | `Control Access {1131f6ad-9c07-11d1-f79f-00c04fc2dcd2}` | Atributos do objeto que foram tocados |
 | `Accesses` | `Control Access` | As permissões pedidas, em texto |
 

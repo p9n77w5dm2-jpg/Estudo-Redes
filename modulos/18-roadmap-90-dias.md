@@ -226,7 +226,7 @@ Sep 03 09:14:22 fw-core-01 1,2026/09/03 09:14:22,001801099999,TRAFFIC,end,2561,2
 | 8 / 9 | Source / Destination Address | `10.10.20.37` / `203.0.113.45` | Origem interna e destino externo |
 | 10 / 11 | NAT Source / Destination IP | `192.0.2.10` / `203.0.113.45` | Endereço público de saída e destino |
 | 12 | Rule Name | `Regra-Saida-Web` | A regra que permitiu |
-| 13 / 14 | Source / Destination User | `jsilva` / `-` | Usuário resolvido |
+| 13 / 14 | Source / Destination User | `jsilva` / *(vazio)* | Usuário resolvido; o de destino vem vazio, como é normal em tráfego de saída |
 | 15 / 16 | Application / Virtual System | `ssl` / `vsys1` | App-ID e firewall virtual |
 | 17 / 18 | Source / Destination Zone | `Interna` / `Externa` | O sentido do tráfego |
 | 19 / 20 | Inbound / Outbound Interface | `ae1.20` / `ae1.10` | Subinterfaces de *port-channel* |
@@ -236,7 +236,7 @@ Sep 03 09:14:22 fw-core-01 1,2026/09/03 09:14:22,001801099999,TRAFFIC,end,2561,2
 | 27 / 28 | NAT Source / Destination Port | `41255` / `443` | Portas após tradução |
 | 29 / 30 / 31 | Flags / Protocol / Action | `0x400053` / `tcp` / `allow` | Bits, protocolo e veredito |
 | 32 / 33 / 34 / 35 | Bytes / Sent / Received / Packets | `18422` / `4210` / `14212` / `54` | Volume total, por direção, e pacotes |
-| 36 | Category | `ANY` | Sem categoria de URL atribuída |
+| *(último campo)* | Category | `ANY` | Sem categoria de URL atribuída. **Atenção à posição**: esta linha tem 36 campos e acaba aqui, mas na ordem real do PAN-OS a `Category` é a posição **38** — o exemplo saltou `Start Time` (36) e `Elapsed Time` (37). Num log verdadeiro, contar até 36 dá o horário de início, não a categoria |
 
 </details>
 
@@ -590,7 +590,7 @@ Failure Code:        0x0
 | `EventID` | `4769` | **O número do evento é o que se filtra**, não o texto da mensagem: o texto muda com o idioma e a versão do Windows, o número não. `4769` = **ticket de serviço** do Kerberos pedido (o "crachá de sala") |
 | `Account Name` | `jsilva@CORP.LOCAL` | A conta envolvida. Terminada em `$` é **conta de computador**, não de pessoa |
 | `Service Name` | `svc_backup` | O serviço para o qual o ticket foi pedido. Terminado em `$` é uma conta de computador |
-| `Client Address` | `::ffff:10.10.20.45` | IP do cliente que pediu o ticket. Vem como `::ffff:10.10.10.50` — **é IPv4 embrulhado em notação IPv6**, não um endereço IPv6 |
+| `Client Address` | `::ffff:10.10.20.45` | IP do cliente que pediu o ticket. **Cuidado com o formato**: o Windows costuma escrevê-lo embrulhado em notação IPv6, como `::ffff:10.10.10.50` — é IPv4, não um endereço IPv6, e uma regra que case só `\d+\.\d+\.\d+\.\d+` deixa esses passar |
 | `Ticket Options` | `0x40810000` | Bits com as opções pedidas para o ticket (renovável, encaminhável...) |
 | `Ticket Encryption Type` | `0x17` | **Cifra do ticket.** `0x17` = **RC4** — fraco; pedido num domínio que usa AES pode indicar *Kerberoasting* |
 | `Failure Code` | `0x0` | **Código de falha do Kerberos.** `0x0` = sucesso |

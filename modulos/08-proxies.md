@@ -486,9 +486,9 @@ Um log de proxy é o extrato bancário da navegação da empresa. Assim como o e
 O Squid é um proxy livre, muito usado em laboratório e em ambientes menores. O formato nativo é simples e sem cabeçalho, o que assusta no começo.
 
 ```
-1725362410.482    312 10.10.20.45 TCP_MISS/200 18422 GET http://portal.example.com/index.html jsilva DIRECT/203.0.113.20 text/html
-1725362488.117     44 10.10.20.45 TCP_DENIED/403 3894 GET http://jogos.example.com/ jsilva NONE/- text/html
-1725362533.905   1180 10.10.20.45 TCP_MISS/200 4194304 GET http://cdn-update.example.com/setup.exe jsilva DIRECT/198.51.100.77 application/octet-stream
+1725362410.482    312 10.10.20.45 TCP_MISS/200 18422 GET http://portal.example.com/index.html jsilva HIER_DIRECT/203.0.113.20 text/html
+1725362488.117     44 10.10.20.45 TCP_DENIED/403 3894 GET http://jogos.example.com/ jsilva HIER_NONE/- text/html
+1725362533.905   1180 10.10.20.45 TCP_MISS/200 4194304 GET http://cdn-update.example.com/setup.exe jsilva HIER_DIRECT/198.51.100.77 application/octet-stream
 ```
 
 <details><summary>Ver legenda</summary>
@@ -503,7 +503,7 @@ O Squid é um proxy livre, muito usado em laboratório e em ambientes menores. O
 | 6 | `GET` | Método HTTP |
 | 7 | `http://...` | URL completa (em HTTPS sem inspeção aparece só `host:443`) |
 | 8 | `jsilva` | Usuário autenticado no proxy |
-| 9 | `DIRECT/203.0.113.20` | Como o Squid buscou o objeto e o IP de destino real |
+| 9 | `HIER_DIRECT/203.0.113.20` | Como o Squid buscou o objeto e o IP de destino real |
 | 10 | `text/html` | Content-Type devolvido |
 
 </details>
@@ -621,9 +621,9 @@ NetskopeAlerts_CL
 ### Cenário 4 — Acesso repetido a categoria bloqueada
 
 ```
-1725367001.220 12 10.10.20.45 TCP_DENIED/403 3894 GET http://proxy-livre.example.com/ jsilva NONE/- text/html
-1725367014.880 11 10.10.20.45 TCP_DENIED/403 3894 GET http://tunel-web.example.com/ jsilva NONE/- text/html
-1725367029.640 10 10.10.20.45 TCP_DENIED/403 3894 GET http://anon-browse.example.com/ jsilva NONE/- text/html
+1725367001.220 12 10.10.20.45 TCP_DENIED/403 3894 GET http://proxy-livre.example.com/ jsilva HIER_NONE/- text/html
+1725367014.880 11 10.10.20.45 TCP_DENIED/403 3894 GET http://tunel-web.example.com/ jsilva HIER_NONE/- text/html
+1725367029.640 10 10.10.20.45 TCP_DENIED/403 3894 GET http://anon-browse.example.com/ jsilva HIER_NONE/- text/html
 ```
 
 <details><summary>Ver legenda</summary>
@@ -638,7 +638,7 @@ NetskopeAlerts_CL
 | método | `GET` | Pedido de leitura |
 | URL | `proxy-livre.example.com`, `tunel-web.example.com`, `anon-browse.example.com` | **Três domínios diferentes, todos da mesma categoria.** Isso separa erro de clique de tentativa deliberada |
 | usuário | `jsilva` | A mesma conta autenticada nas três — não há dúvida sobre quem foi |
-| hierarquia/destino | `NONE/-` | Nada saiu para a Internet |
+| hierarquia/destino | `HIER_NONE/-` | Nada saiu para a Internet |
 | tipo de conteúdo | `text/html` | A página de bloqueio devolvida |
 
 </details>
@@ -673,9 +673,9 @@ DeviceNetworkEvents
 ### Cenário 6 — IP direto e beaconing
 
 ```
-1725370800.101 90 10.10.20.45 TCP_TUNNEL/200 512 CONNECT 192.0.2.66:443 jsilva DIRECT/192.0.2.66 -
-1725371100.104 88 10.10.20.45 TCP_TUNNEL/200 516 CONNECT 192.0.2.66:443 jsilva DIRECT/192.0.2.66 -
-1725371400.099 91 10.10.20.45 TCP_TUNNEL/200 510 CONNECT 192.0.2.66:443 jsilva DIRECT/192.0.2.66 -
+1725370800.101 90 10.10.20.45 TCP_TUNNEL/200 512 CONNECT 192.0.2.66:443 jsilva HIER_DIRECT/192.0.2.66 -
+1725371100.104 88 10.10.20.45 TCP_TUNNEL/200 516 CONNECT 192.0.2.66:443 jsilva HIER_DIRECT/192.0.2.66 -
+1725371400.099 91 10.10.20.45 TCP_TUNNEL/200 510 CONNECT 192.0.2.66:443 jsilva HIER_DIRECT/192.0.2.66 -
 ```
 
 Duas anomalias juntas: destino é IP puro, sem nome de domínio (navegador de gente quase sempre usa nome), e o intervalo é de exatamente 300 segundos, com bytes quase idênticos. Isso é *beaconing* — o padrão de um agente de comando e controle "batendo ponto". MITRE T1071.001 (*Application Layer Protocol: Web Protocols*).
